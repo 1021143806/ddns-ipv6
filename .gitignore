@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+venv/
+
+# Sensitive config
+config/env.toml
+
+# Backup
+backup/
+
+# Test outputs (keep test scripts)
+test/__pycache__/
+
+# IDE
+.vscode/
+.idea/
