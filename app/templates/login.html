@@ -1,30 +1,489 @@
 {% extends "base.html" %}
 {% block title %}登录 - DDNS IPv6{% endblock %}
 {% block content %}
-<div class="min-h-[80vh] flex items-center justify-center">
-    <div class="card w-full max-w-md">
-        <div class="text-center mb-6">
-            <h1 class="text-2xl font-bold text-gray-900">🌐 DDNS IPv6</h1>
-            <p class="text-gray-500 mt-1">请登录以管理域名解析</p>
-        </div>
+{% block styles %}
+<style>
+    :root {
+        --apple-blue: #0071e3;
+        --apple-blue-hover: #0077ed;
+        --apple-blue-active: #006edb;
+        --bg-soft: #f5f5f7;
+        --card-bg: rgba(255, 255, 255, 0.82);
+        --card-border: rgba(255, 255, 255, 0.6);
+        --text-primary: #1d1d1f;
+        --text-secondary: #86868b;
+        --input-bg: #f5f5f7;
+        --input-border: #d2d2d7;
+        --input-border-focus: #0071e3;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.05);
+        --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.04);
+        --shadow-glow-blue: 0 0 0 4px rgba(0, 113, 227, 0.12);
+        --radius-sm: 10px;
+        --radius-md: 14px;
+        --radius-lg: 20px;
+        --radius-xl: 24px;
+        --font-stack: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        --transition-fast: 0.18s cubic-bezier(0.25, 0.1, 0.25, 1);
+        --transition-smooth: 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
 
+    .mac-login-wrapper {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        background: var(--bg-soft);
+        font-family: var(--font-stack);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        padding: 1.5rem;
+    }
+
+    /* 背景光晕装饰 */
+    .mac-ambient-glow {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(100px);
+        opacity: 0.55;
+        pointer-events: none;
+        z-index: 0;
+        will-change: transform;
+    }
+    .mac-ambient-glow--blue {
+        width: 380px;
+        height: 380px;
+        background: radial-gradient(circle, rgba(0, 125, 250, 0.35) 0%, rgba(100, 180, 255, 0.12) 45%, transparent 70%);
+        top: -8%;
+        left: -15%;
+        animation: macGlowFloatBlue 12s ease-in-out infinite;
+    }
+    .mac-ambient-glow--purple {
+        width: 340px;
+        height: 340px;
+        background: radial-gradient(circle, rgba(160, 120, 255, 0.28) 0%, rgba(180, 150, 255, 0.1) 45%, transparent 70%);
+        bottom: -10%;
+        right: -12%;
+        animation: macGlowFloatPurple 14s ease-in-out infinite;
+    }
+    .mac-ambient-glow--warm {
+        width: 260px;
+        height: 260px;
+        background: radial-gradient(circle, rgba(255, 160, 120, 0.2) 0%, rgba(255, 200, 160, 0.08) 45%, transparent 70%);
+        top: 45%;
+        left: 55%;
+        animation: macGlowFloatWarm 16s ease-in-out infinite;
+    }
+
+    @keyframes macGlowFloatBlue {
+        0%,
+        100% {
+            transform: translate(0, 0) scale(1);
+        }
+        33% {
+            transform: translate(30px, -25px) scale(1.08);
+        }
+        66% {
+            transform: translate(-15px, 20px) scale(0.94);
+        }
+    }
+    @keyframes macGlowFloatPurple {
+        0%,
+        100% {
+            transform: translate(0, 0) scale(1);
+        }
+        33% {
+            transform: translate(-25px, -30px) scale(1.1);
+        }
+        66% {
+            transform: translate(20px, 15px) scale(0.92);
+        }
+    }
+    @keyframes macGlowFloatWarm {
+        0%,
+        100% {
+            transform: translate(0, 0) scale(1);
+        }
+        50% {
+            transform: translate(-20px, 20px) scale(1.06);
+        }
+    }
+
+    /* 卡片主体 */
+    .mac-card {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        max-width: 420px;
+        background: var(--card-bg);
+        backdrop-filter: blur(32px) saturate(140%);
+        -webkit-backdrop-filter: blur(32px) saturate(140%);
+        border: 1px solid var(--card-border);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-lg);
+        padding: 2.5rem 2rem 2.25rem;
+        animation: macCardEntrance 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+        transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
+    }
+    .mac-card:hover {
+        box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    }
+
+    @keyframes macCardEntrance {
+        0% {
+            opacity: 0;
+            transform: translateY(24px) scale(0.96);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    /* 应用图标 */
+    .mac-app-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 1.25rem;
+        border-radius: 17px;
+        background: linear-gradient(155deg, #4da3ff 0%, #0071e3 40%, #005bb5 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        box-shadow: 0 6px 18px rgba(0, 113, 227, 0.3), 0 2px 6px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+    .mac-app-icon::after {
+        content: '';
+        position: absolute;
+        top: 8%;
+        left: 15%;
+        width: 55%;
+        height: 30%;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 100%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+
+    /* 标题区 */
+    .mac-title {
+        font-size: 1.35rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+        text-align: center;
+        margin-bottom: 0.3rem;
+    }
+    .mac-subtitle {
+        font-size: 0.9rem;
+        font-weight: 400;
+        color: var(--text-secondary);
+        text-align: center;
+        letter-spacing: -0.01em;
+        margin-bottom: 1.75rem;
+    }
+
+    /* 错误提示 */
+    .mac-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.6rem;
+        background: #fff5f5;
+        border: 1px solid #fecaca;
+        border-left: 3px solid #ef4444;
+        color: #991b1b;
+        padding: 0.85rem 1rem;
+        border-radius: var(--radius-md);
+        margin-bottom: 1.25rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        animation: macAlertIn 0.35s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+        box-shadow: var(--shadow-sm);
+    }
+    .mac-alert-icon {
+        flex-shrink: 0;
+        width: 18px;
+        height: 18px;
+        margin-top: 1px;
+    }
+    @keyframes macAlertIn {
+        0% {
+            opacity: 0;
+            transform: translateY(-8px);
+            max-height: 0;
+            margin-bottom: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-left-width: 0;
+        }
+        60% {
+            opacity: 1;
+            transform: translateY(2px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+            max-height: 100px;
+            margin-bottom: 1.25rem;
+            padding-top: 0.85rem;
+            padding-bottom: 0.85rem;
+            border-left-width: 3px;
+        }
+    }
+
+    /* 表单组 */
+    .mac-form-group {
+        margin-bottom: 1.15rem;
+    }
+    .mac-label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #6e6e73;
+        letter-spacing: -0.01em;
+        margin-bottom: 0.4rem;
+        text-transform: none;
+    }
+    .mac-input {
+        display: block;
+        width: 100%;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.95rem;
+        font-family: var(--font-stack);
+        font-weight: 400;
+        color: var(--text-primary);
+        background: var(--input-bg);
+        border: 1.5px solid var(--input-border);
+        border-radius: var(--radius-sm);
+        outline: none;
+        transition: all var(--transition-fast);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        letter-spacing: -0.01em;
+    }
+    .mac-input::placeholder {
+        color: #b0b0b8;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+    }
+    .mac-input:hover {
+        border-color: #b8b8c0;
+        background: #f0f0f3;
+    }
+    .mac-input:focus {
+        border-color: var(--input-border-focus);
+        background: #ffffff;
+        box-shadow: var(--shadow-glow-blue), inset 0 1px 2px rgba(0, 0, 0, 0.02);
+        outline: none;
+    }
+    .mac-input:focus::placeholder {
+        color: #c8c8d0;
+    }
+    /* 自动填充样式覆盖 */
+    .mac-input:-webkit-autofill {
+        -webkit-box-shadow: 0 0 0 30px #f5f5f7 inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+        border-color: var(--input-border);
+        transition: background-color 5000s ease-in-out 0s;
+    }
+    .mac-input:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 30px #ffffff inset !important;
+        border-color: var(--input-border-focus);
+    }
+
+    /* 按钮 */
+    .mac-btn {
+        display: block;
+        width: 100%;
+        padding: 0.75rem 1.5rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        font-family: var(--font-stack);
+        letter-spacing: -0.01em;
+        color: #ffffff;
+        background: var(--apple-blue);
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        box-shadow: 0 2px 8px rgba(0, 113, 227, 0.28), 0 1px 3px rgba(0, 0, 0, 0.06);
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        position: relative;
+        overflow: hidden;
+        margin-top: 0.75rem;
+    }
+    .mac-btn::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 60%);
+        pointer-events: none;
+        border-radius: var(--radius-sm);
+        opacity: 1;
+        transition: opacity var(--transition-fast);
+    }
+    .mac-btn:hover {
+        background: var(--apple-blue-hover);
+        box-shadow: 0 4px 14px rgba(0, 113, 227, 0.38), 0 2px 6px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
+    }
+    .mac-btn:active {
+        background: var(--apple-blue-active);
+        box-shadow: 0 1px 4px rgba(0, 113, 227, 0.3), 0 0px 2px rgba(0, 0, 0, 0.06);
+        transform: translateY(0) scale(0.985);
+        transition: all 0.08s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+    .mac-btn:focus-visible {
+        outline: 3px solid rgba(0, 113, 227, 0.35);
+        outline-offset: 3px;
+    }
+
+    /* 底部信息 */
+    .mac-footer-hint {
+        text-align: center;
+        margin-top: 1.5rem;
+        font-size: 0.78rem;
+        color: #b0b0b8;
+        letter-spacing: -0.01em;
+    }
+    .mac-footer-hint span {
+        color: #a0a0a8;
+    }
+
+    /* 响应式 */
+    @media (max-width: 480px) {
+        .mac-card {
+            padding: 2rem 1.35rem 1.75rem;
+            border-radius: var(--radius-lg);
+            max-width: 100%;
+        }
+        .mac-app-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            font-size: 24px;
+            margin-bottom: 1rem;
+        }
+        .mac-title {
+            font-size: 1.2rem;
+        }
+        .mac-subtitle {
+            font-size: 0.82rem;
+            margin-bottom: 1.4rem;
+        }
+        .mac-input {
+            padding: 0.6rem 0.75rem;
+            font-size: 0.9rem;
+        }
+        .mac-btn {
+            padding: 0.7rem 1.25rem;
+            font-size: 0.9rem;
+        }
+        .mac-ambient-glow--blue {
+            width: 240px;
+            height: 240px;
+            top: -15%;
+            left: -25%;
+        }
+        .mac-ambient-glow--purple {
+            width: 220px;
+            height: 220px;
+            bottom: -18%;
+            right: -22%;
+        }
+        .mac-ambient-glow--warm {
+            width: 160px;
+            height: 160px;
+            top: 50%;
+            left: 50%;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .mac-card,
+        .mac-alert,
+        .mac-ambient-glow--blue,
+        .mac-ambient-glow--purple,
+        .mac-ambient-glow--warm {
+            animation: none !important;
+        }
+        .mac-btn {
+            transition: none !important;
+        }
+    }
+</style>
+{% endblock %}
+
+<div class="mac-login-wrapper">
+    <!-- 背景光晕 -->
+    <div class="mac-ambient-glow mac-ambient-glow--blue"></div>
+    <div class="mac-ambient-glow mac-ambient-glow--purple"></div>
+    <div class="mac-ambient-glow mac-ambient-glow--warm"></div>
+
+    <!-- 登录卡片 -->
+    <div class="mac-card">
+        <!-- 应用图标 -->
+        <div class="mac-app-icon" aria-hidden="true">🌐</div>
+
+        <!-- 标题 -->
+        <h1 class="mac-title">DDNS IPv6</h1>
+        <p class="mac-subtitle">登录以管理域名解析</p>
+
+        <!-- 错误提示 -->
         {% if error %}
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-            {{ error }}
+        <div class="mac-alert" role="alert">
+            <svg class="mac-alert-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="10" cy="10" r="9" stroke="#ef4444" stroke-width="1.6" fill="none"/>
+                <path d="M10 6v5" stroke="#ef4444" stroke-width="1.8" stroke-linecap="round"/>
+                <circle cx="10" cy="14.2" r="0.9" fill="#ef4444"/>
+            </svg>
+            <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <form method="POST" action="/login" class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
-                <input type="text" name="username" class="input-field" placeholder="请输入用户名" required autofocus>
+        <!-- 表单 -->
+        <form method="POST" action="/login" novalidate>
+            <div class="mac-form-group">
+                <label class="mac-label" for="username">用户名</label>
+                <input
+                type="text"
+                name="username"
+                id="username"
+                class="mac-input"
+                placeholder="请输入用户名"
+                required
+                autofocus
+                autocomplete="username"
+                >
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
-                <input type="password" name="password" class="input-field" placeholder="请输入密码" required>
+            <div class="mac-form-group">
+                <label class="mac-label" for="password">密码</label>
+                <input
+                type="password"
+                name="password"
+                id="password"
+                class="mac-input"
+                placeholder="请输入密码"
+                required
+                autocomplete="current-password"
+                >
             </div>
-            <button type="submit" class="btn-primary w-full">登 录</button>
+            <button type="submit" class="mac-btn">登录</button>
         </form>
+
+        <!-- 底部提示 -->
+        <p class="mac-footer-hint">
+            <span>🔒</span> 安全连接 · DDNS IPv6 管理面板
+        </p>
     </div>
 </div>
 {% endblock %}
