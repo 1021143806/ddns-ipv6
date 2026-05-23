@@ -7,7 +7,10 @@
         <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">域名管理</h1>
         <p class="text-gray-500 dark:text-gray-400 mt-1">管理 DDNS 解析域名</p>
     </div>
-    <button onclick="showAddModal()" class="btn-primary">+ 添加域名</button>
+    <div class="flex space-x-3">
+        <button onclick="showRegisterModal()" class="btn-success text-sm">✨ 创建子域名</button>
+        <button onclick="showAddModal()" class="btn-primary">+ 添加域名</button>
+    </div>
 </div>
 
 <!-- 域名列表 -->
@@ -103,6 +106,38 @@
             <div class="flex justify-end space-x-3 pt-2">
                 <button type="button" onclick="closeModal()" class="btn-secondary">取消</button>
                 <button type="submit" class="btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 创建子域名模态框 -->
+<div id="register-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">✨ 创建子域名</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">通过 dnshe API 直接创建子域名，无需登录 dnshe 面板。</p>
+        <form id="register-form" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">子域名前缀 *</label>
+                <input type="text" id="reg-subdomain" class="input-field" placeholder="ddns" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">根域名 *</label>
+                <input type="text" id="reg-rootdomain" class="input-field" placeholder="ptrel.cc.cd" required>
+            </div>
+            <div id="reg-result" class="hidden">
+                <div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-3 rounded-lg text-sm">
+                    <p id="reg-result-msg"></p>
+                </div>
+            </div>
+            <div id="reg-error" class="hidden">
+                <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg text-sm">
+                    <p id="reg-error-msg"></p>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button type="button" onclick="closeRegisterModal()" class="btn-secondary">取消</button>
+                <button type="submit" class="btn-success" id="reg-submit-btn">创建</button>
             </div>
         </form>
     </div>
@@ -221,6 +256,66 @@ async function checkDomain(domainId) {
 // 点击遮罩关闭
 document.getElementById('domain-modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
+});
+document.getElementById('register-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeRegisterModal();
+});
+
+// ===== 创建子域名 =====
+function showRegisterModal() {
+    document.getElementById('reg-subdomain').value = '';
+    document.getElementById('reg-rootdomain').value = 'ptrel.cc.cd';
+    document.getElementById('reg-result').classList.add('hidden');
+    document.getElementById('reg-error').classList.add('hidden');
+    document.getElementById('reg-submit-btn').disabled = false;
+    document.getElementById('reg-submit-btn').textContent = '创建';
+    document.getElementById('register-modal').classList.remove('hidden');
+}
+
+function closeRegisterModal() {
+    document.getElementById('register-modal').classList.add('hidden');
+}
+
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('reg-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '创建中...';
+
+    document.getElementById('reg-result').classList.add('hidden');
+    document.getElementById('reg-error').classList.add('hidden');
+
+    const body = {
+        subdomain: document.getElementById('reg-subdomain').value.trim(),
+        rootdomain: document.getElementById('reg-rootdomain').value.trim(),
+    };
+
+    try {
+        const resp = await fetch('/api/domains/register-subdomain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            const result = data.result;
+            const subdomainId = result.id || result.subdomain_id || '?';
+            document.getElementById('reg-result-msg').textContent =
+                `子域名 ${body.subdomain}.${body.rootdomain} 创建成功！子域名 ID: ${subdomainId}`;
+            document.getElementById('reg-result').classList.remove('hidden');
+            btn.textContent = '✅ 已创建';
+        } else {
+            document.getElementById('reg-error-msg').textContent = data.detail || '创建失败';
+            document.getElementById('reg-error').classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = '创建';
+        }
+    } catch (err) {
+        document.getElementById('reg-error-msg').textContent = '请求失败: ' + err.message;
+        document.getElementById('reg-error').classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = '创建';
+    }
 });
 </script>
 {% endblock %}

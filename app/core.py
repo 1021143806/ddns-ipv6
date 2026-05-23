@@ -301,6 +301,38 @@ def update_record(config: dict, domain_cfg: dict, record_id: int, ipv6: str) -> 
     return True
 
 
+def register_subdomain(config: dict, subdomain: str, rootdomain: str) -> dict | None:
+    """通过 dnshe API 注册子域名
+
+    Args:
+        config: 完整配置
+        subdomain: 子域名前缀（如 ddns）
+        rootdomain: 根域名（如 ptrel.cc.cd）
+
+    Returns:
+        API 响应字典（含 subdomain_id），失败返回 None
+    """
+    body = {
+        "subdomain": subdomain,
+        "rootdomain": rootdomain,
+    }
+
+    resp = api_request(
+        config,
+        endpoint="subdomains",
+        action="register",
+        method="POST",
+        body=body,
+    )
+
+    if resp is None:
+        log(f"[ERROR] 注册子域名失败: {subdomain}.{rootdomain}")
+        return None
+
+    log(f"[INFO] 注册子域名成功: {subdomain}.{rootdomain} (id={resp.get('id')})")
+    return resp
+
+
 def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
     """对单个域名执行完整的检测+更新流程
 

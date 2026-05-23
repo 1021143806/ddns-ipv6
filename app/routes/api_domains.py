@@ -1,7 +1,7 @@
 """域名管理 REST API"""
 
 from fastapi import APIRouter, Request, HTTPException
-from app.core import load_config, save_config, check_and_update_domain
+from app.core import load_config, save_config, check_and_update_domain, register_subdomain
 from app.models import (
     add_log,
     upsert_domain_status,
@@ -51,6 +51,26 @@ async def list_domains(request: Request):
             "status": status.get("status", "unknown"),
         })
     return {"domains": result}
+
+
+@router.post("/register-subdomain")
+async def api_register_subdomain(request: Request):
+    """通过 dnshe API 注册子域名"""
+    require_auth(request, _get_config(request))
+    body = await request.json()
+
+    required = ["subdomain", "rootdomain"]
+    for field in required:
+        if field not in body:
+            raise HTTPException(status_code=400, detail=f"缺少必填字段: {field}")
+
+    config = _reload_config(request)
+    resp = register_subdomain(config, body["subdomain"], body["rootdomain"])
+
+    if resp is None:
+        raise HTTPException(status_code=500, detail="注册子域名失败，请检查 API 密钥和域名信息")
+
+    return {"success": True, "result": resp}
 
 
 @router.post("")
