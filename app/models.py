@@ -74,7 +74,6 @@ def add_log(
         (domain_id, record_name, action, old_ip, new_ip, message, now),
     )
     conn.commit()
-    conn.close()
     return cursor.lastrowid
 
 
@@ -82,7 +81,7 @@ def get_logs(
     domain_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict]:
+) -> dict:
     """查询操作日志（分页）"""
     conn = get_db()
     if domain_id:
@@ -99,7 +98,6 @@ def get_logs(
             (limit, offset),
         ).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM ddns_logs").fetchone()[0]
-    conn.close()
     return {
         "logs": [dict(r) for r in rows],
         "total": total,
@@ -116,7 +114,6 @@ def get_today_update_count() -> int:
         "SELECT COUNT(*) FROM ddns_logs WHERE action IN ('create', 'update') AND date(created_at) = ?",
         (today,),
     ).fetchone()
-    conn.close()
     return row[0] if row else 0
 
 
@@ -158,14 +155,12 @@ def upsert_domain_status(
             (domain_id, record_name, current_ip, now, status),
         )
     conn.commit()
-    conn.close()
 
 
 def get_all_domain_status() -> list[dict]:
     """获取所有域名状态"""
     conn = get_db()
     rows = conn.execute("SELECT * FROM domain_status").fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
@@ -175,7 +170,6 @@ def get_domain_status(domain_id: str) -> dict | None:
     row = conn.execute(
         "SELECT * FROM domain_status WHERE domain_id = ?", (domain_id,)
     ).fetchone()
-    conn.close()
     return dict(row) if row else None
 
 
@@ -184,4 +178,3 @@ def delete_domain_status(domain_id: str) -> None:
     conn = get_db()
     conn.execute("DELETE FROM domain_status WHERE domain_id = ?", (domain_id,))
     conn.commit()
-    conn.close()

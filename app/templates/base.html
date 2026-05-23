@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}DDNS IPv6{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 暗黑模式配置：使用 class 策略
+        tailwind.config = {
+            darkMode: 'class',
+        };
+        // 页面加载时立即恢复主题，避免闪烁
+        (function() {
+            const saved = localStorage.getItem('ddns-theme');
+            if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         .status-ok { @apply bg-green-500; }
@@ -14,33 +27,39 @@
         .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors; }
         .btn-danger { @apply bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors; }
         .btn-success { @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors; }
-        .btn-secondary { @apply bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg transition-colors; }
-        .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6; }
-        .input-field { @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none; }
+        .btn-secondary { @apply bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg transition-colors dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-gray-200; }
+        .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:bg-gray-800 dark:border-gray-700; }
+        .input-field { @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200; }
+        /* 模态框遮罩 */
+        .modal-overlay { @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen transition-colors">
     {% if user %}
-    <nav class="bg-white shadow-sm border-b border-gray-200">
+    <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-14">
                 <div class="flex space-x-8">
-                    <a href="/dashboard" class="inline-flex items-center px-1 pt-1 text-sm font-semibold text-gray-900">
+                    <a href="/dashboard" class="inline-flex items-center px-1 pt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
                         🌐 DDNS IPv6
                     </a>
-                    <a href="/dashboard" class="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 {% if request.url.path == '/dashboard' %}border-blue-500 text-gray-900{% else %}border-transparent{% endif %}">
+                    <a href="/dashboard" class="inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 {% if request.url.path == '/dashboard' %}border-blue-500 text-gray-900 dark:text-gray-100{% else %}border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200{% endif %}">
                         仪表盘
                     </a>
-                    <a href="/domains" class="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 {% if request.url.path == '/domains' %}border-blue-500 text-gray-900{% else %}border-transparent{% endif %}">
+                    <a href="/domains" class="inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 {% if request.url.path == '/domains' %}border-blue-500 text-gray-900 dark:text-gray-100{% else %}border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200{% endif %}">
                         域名管理
                     </a>
-                    <a href="/logs" class="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 {% if request.url.path == '/logs' %}border-blue-500 text-gray-900{% else %}border-transparent{% endif %}">
+                    <a href="/logs" class="inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 {% if request.url.path == '/logs' %}border-blue-500 text-gray-900 dark:text-gray-100{% else %}border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200{% endif %}">
                         操作日志
                     </a>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-500">{{ user }}</span>
-                    <a href="/logout" class="text-sm text-gray-500 hover:text-red-600">退出</a>
+                <div class="flex items-center space-x-3">
+                    <!-- 暗黑模式切换 -->
+                    <button onclick="toggleTheme()" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="切换暗黑模式">
+                        <span id="theme-icon">🌙</span>
+                    </button>
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{ user }}</span>
+                    <a href="/logout" class="text-sm text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400">退出</a>
                 </div>
             </div>
         </div>
@@ -50,6 +69,29 @@
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {% block content %}{% endblock %}
     </main>
+
+    <script>
+    function toggleTheme() {
+        const html = document.documentElement;
+        const icon = document.getElementById('theme-icon');
+        if (html.classList.contains('dark')) {
+            html.classList.remove('dark');
+            localStorage.setItem('ddns-theme', 'light');
+            icon.textContent = '🌙';
+        } else {
+            html.classList.add('dark');
+            localStorage.setItem('ddns-theme', 'dark');
+            icon.textContent = '☀️';
+        }
+    }
+    // 初始化图标
+    document.addEventListener('DOMContentLoaded', function() {
+        const icon = document.getElementById('theme-icon');
+        if (icon) {
+            icon.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+        }
+    });
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>

@@ -4,8 +4,8 @@
 
 <div class="flex justify-between items-center mb-6">
     <div>
-        <h1 class="text-2xl font-bold text-gray-900">域名管理</h1>
-        <p class="text-gray-500 mt-1">管理 DDNS 解析域名</p>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">域名管理</h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">管理 DDNS 解析域名</p>
     </div>
     <button onclick="showAddModal()" class="btn-primary">+ 添加域名</button>
 </div>
@@ -16,19 +16,19 @@
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead>
-                <tr class="border-b border-gray-200">
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">状态</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">域名</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">类型</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">子域名ID</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">TTL</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">当前IP</th>
-                    <th class="text-right py-3 px-2 font-medium text-gray-500">操作</th>
+                <tr class="border-b border-gray-200 dark:border-gray-700">
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">状态</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">域名</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">类型</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">子域名ID</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">TTL</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">当前IP</th>
+                    <th class="text-right py-3 px-2 font-medium text-gray-500 dark:text-gray-400">操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for d in domains %}
-                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td class="py-3 px-2">
                         {% if not d.enabled %}
                         <span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400" title="已禁用"></span>
@@ -40,15 +40,15 @@
                         <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" title="未知"></span>
                         {% endif %}
                     </td>
-                    <td class="py-3 px-2 font-medium text-gray-900">{{ d.record_name }}</td>
-                    <td class="py-3 px-2 text-gray-600">{{ d.record_type }}</td>
-                    <td class="py-3 px-2 text-gray-600">{{ d.subdomain_id }}</td>
-                    <td class="py-3 px-2 text-gray-600">{{ d.ttl }}s</td>
-                    <td class="py-3 px-2 font-mono text-xs text-gray-600">{{ d.current_ip }}</td>
+                    <td class="py-3 px-2 font-medium text-gray-900 dark:text-gray-100">{{ d.record_name }}</td>
+                    <td class="py-3 px-2 text-gray-600 dark:text-gray-400">{{ d.record_type }}</td>
+                    <td class="py-3 px-2 text-gray-600 dark:text-gray-400">{{ d.subdomain_id }}</td>
+                    <td class="py-3 px-2 text-gray-600 dark:text-gray-400">{{ d.ttl }}s</td>
+                    <td class="py-3 px-2 font-mono text-xs text-gray-600 dark:text-gray-400">{{ d.current_ip }}</td>
                     <td class="py-3 px-2 text-right space-x-2">
-                        <button onclick="checkDomain('{{ d.id }}')" class="text-green-600 hover:text-green-800 text-xs font-medium" {% if not d.enabled %}disabled class="text-gray-300"{% endif %}>检查</button>
-                        <button onclick='editDomain({{ d | tojson }})' class="text-blue-600 hover:text-blue-800 text-xs font-medium">编辑</button>
-                        <button onclick="deleteDomain('{{ d.id }}', '{{ d.record_name }}')" class="text-red-600 hover:text-red-800 text-xs font-medium">删除</button>
+                        <button onclick="checkDomain('{{ d.id }}')" class="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 text-xs font-medium" {% if not d.enabled %}disabled class="text-gray-300"{% endif %}>检查</button>
+                        <button onclick='editDomain({{ d | tojson }})' class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-xs font-medium">编辑</button>
+                        <button onclick="deleteDomain('{{ d.id }}', '{{ d.record_name }}')" class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-xs font-medium">删除</button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -56,7 +56,7 @@
         </table>
     </div>
     {% else %}
-    <div class="text-center py-8 text-gray-400">
+    <div class="text-center py-8 text-gray-400 dark:text-gray-500">
         <p>暂无域名，点击右上角"添加域名"开始</p>
     </div>
     {% endif %}
@@ -64,22 +64,22 @@
 
 <!-- 添加/编辑域名模态框 -->
 <div id="domain-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4" id="modal-title">添加域名</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4" id="modal-title">添加域名</h2>
         <form id="domain-form" class="space-y-4">
             <input type="hidden" id="form-method" value="POST">
             <input type="hidden" id="form-domain-id" value="">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">域名记录名 *</label>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">域名记录名 *</label>
                 <input type="text" id="form-record-name" class="input-field" placeholder="ipv6.example.com" required>
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">子域名 ID *</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">子域名 ID *</label>
                     <input type="number" id="form-subdomain-id" class="input-field" placeholder="12345" required>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">记录类型</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">记录类型</label>
                     <select id="form-record-type" class="input-field">
                         <option value="AAAA">AAAA</option>
                         <option value="A">A</option>
@@ -88,17 +88,17 @@
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">TTL (秒)</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">TTL (秒)</label>
                     <input type="number" id="form-ttl" class="input-field" value="600">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">检查间隔 (秒)</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">检查间隔 (秒)</label>
                     <input type="number" id="form-check-interval" class="input-field" placeholder="使用全局设置">
                 </div>
             </div>
             <div class="flex items-center">
-                <input type="checkbox" id="form-enabled" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                <label class="ml-2 text-sm text-gray-700">启用</label>
+                <input type="checkbox" id="form-enabled" class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700" checked>
+                <label class="ml-2 text-sm text-gray-700 dark:text-gray-300">启用</label>
             </div>
             <div class="flex justify-end space-x-3 pt-2">
                 <button type="button" onclick="closeModal()" class="btn-secondary">取消</button>

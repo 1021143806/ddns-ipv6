@@ -10,7 +10,7 @@ import time
 
 router = APIRouter()
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # 简易登录速率限制：记录最近失败尝试
@@ -24,14 +24,14 @@ def _get_config(request: Request) -> dict:
 
 
 def _auth_context(request: Request) -> dict:
-    """获取模板渲染的认证上下文"""
+    """获取模板渲染的认证上下文（不传 config，避免 Jinja2 缓存 key 不可哈希）"""
     config = _get_config(request)
     try:
         username = require_auth(request, config)
-        return {"user": username, "config": config}
+        return {"user": username}
     except HTTPException as e:
         if e.status_code == 401:
-            return {"user": None, "config": config}
+            return {"user": None}
         raise
 
 
@@ -45,7 +45,7 @@ async def login_page(request: Request):
     ctx = _auth_context(request)
     if ctx["user"]:
         return RedirectResponse("/dashboard", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "login.html", {"request": request, **ctx})
 
 
 @router.post("/login")
@@ -59,8 +59,9 @@ async def login(request: Request, username: str = Form(...), password: str = For
     attempts = [t for t in attempts if now - t < _LOGIN_WINDOW]
     if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
         return templates.TemplateResponse(
+            request,
             "login.html",
-            {"request": request, "user": None, "config": _get_config(request),
+            {"request": request, "user": None,
              "error": f"登录尝试过于频繁，请 {_LOGIN_WINDOW} 秒后再试"},
         )
 
@@ -80,8 +81,9 @@ async def login(request: Request, username: str = Form(...), password: str = For
     _login_attempts[client_ip] = attempts
 
     return templates.TemplateResponse(
+        request,
         "login.html",
-        {"request": request, "user": None, "config": config, "error": "用户名或密码错误"},
+        {"request": request, "user": None, "error": "用户名或密码错误"},
     )
 
 
@@ -109,7 +111,7 @@ async def dashboard(request: Request):
     if not ctx["user"]:
         return RedirectResponse("/login", status_code=302)
 
-    config = ctx["config"]
+    config = _get_config(request)
     domains = config.get("domains", [])
     status_list = get_all_domain_status()
     status_map = {s["domain_id"]: s for s in status_list}
@@ -130,9 +132,9 @@ async def dashboard(request: Request):
     online = sum(1 for ds in domain_statuses if ds["status"] == "ok")
     error = sum(1 for ds in domain_statuses if ds["status"] == "error")
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
-        **ctx,
+        "user": ctx["user"],
         "domain_statuses": domain_statuses,
         "total_domains": len(domains),
         "enabled_domains": sum(1 for d in domains if d.get("enabled", True)),
@@ -149,7 +151,7 @@ async def domains_page(request: Request):
     if not ctx["user"]:
         return RedirectResponse("/login", status_code=302)
 
-    config = ctx["config"]
+    config = _get_config(request)
     domains = config.get("domains", [])
     status_list = get_all_domain_status()
     status_map = {s["domain_id"]: s for s in status_list}
@@ -171,9 +173,9 @@ async def domains_page(request: Request):
             "status": s.get("status", "unknown"),
         })
 
-    return templates.TemplateResponse("domains.html", {
+    return templates.TemplateResponse(request, "domains.html", {
         "request": request,
-        **ctx,
+        "user": ctx["user"],
         "domains": domain_list,
     })
 
@@ -185,13 +187,13 @@ async def logs_page(request: Request):
     if not ctx["user"]:
         return RedirectResponse("/login", status_code=302)
 
-    config = ctx["config"]
+    config = _get_config(request)
     domains = config.get("domains", [])
     log_data = get_logs(limit=100, offset=0)
 
-    return templates.TemplateResponse("logs.html", {
+    return templates.TemplateResponse(request, "logs.html", {
         "request": request,
-        **ctx,
+        "user": ctx["user"],
         "logs": log_data["logs"],
         "total": log_data["total"],
         "domains": domains,

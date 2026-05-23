@@ -3,27 +3,27 @@
 {% block content %}
 
 <div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">仪表盘</h1>
-    <p class="text-gray-500 mt-1">DDNS IPv6 服务运行状态概览</p>
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">仪表盘</h1>
+    <p class="text-gray-500 dark:text-gray-400 mt-1">DDNS IPv6 服务运行状态概览</p>
 </div>
 
 <!-- 统计卡片 -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="card">
-        <div class="text-3xl font-bold text-blue-600">{{ total_domains }}</div>
-        <div class="text-sm text-gray-500 mt-1">域名总数</div>
+        <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">{{ total_domains }}</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">域名总数</div>
     </div>
     <div class="card">
-        <div class="text-3xl font-bold text-green-600">{{ online_count }}</div>
-        <div class="text-sm text-gray-500 mt-1">在线正常</div>
+        <div class="text-3xl font-bold text-green-600 dark:text-green-400">{{ online_count }}</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">在线正常</div>
     </div>
     <div class="card">
-        <div class="text-3xl font-bold text-orange-600">{{ today_updates }}</div>
-        <div class="text-sm text-gray-500 mt-1">今日更新</div>
+        <div class="text-3xl font-bold text-orange-600 dark:text-orange-400">{{ today_updates }}</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">今日更新</div>
     </div>
     <div class="card">
-        <div class="text-3xl font-bold text-red-600">{{ error_count }}</div>
-        <div class="text-sm text-gray-500 mt-1">异常</div>
+        <div class="text-3xl font-bold text-red-600 dark:text-red-400">{{ error_count }}</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">异常</div>
     </div>
 </div>
 
@@ -37,22 +37,22 @@
 
 <!-- 域名状态列表 -->
 <div class="card">
-    <h2 class="text-lg font-semibold text-gray-900 mb-4">域名状态</h2>
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">域名状态</h2>
     {% if domain_statuses %}
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead>
-                <tr class="border-b border-gray-200">
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">状态</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">域名</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">当前 IPv6</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500">最后检查</th>
-                    <th class="text-right py-3 px-2 font-medium text-gray-500">操作</th>
+                <tr class="border-b border-gray-200 dark:border-gray-700">
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">状态</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">域名</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">当前 IPv6</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">最后检查</th>
+                    <th class="text-right py-3 px-2 font-medium text-gray-500 dark:text-gray-400">操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for ds in domain_statuses %}
-                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td class="py-3 px-2">
                         {% if not ds.enabled %}
                         <span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400" title="已禁用"></span>
@@ -64,14 +64,14 @@
                         <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" title="未知"></span>
                         {% endif %}
                     </td>
-                    <td class="py-3 px-2 font-medium text-gray-900">
+                    <td class="py-3 px-2 font-medium text-gray-900 dark:text-gray-100">
                         {{ ds.record_name }}
-                        {% if not ds.enabled %}<span class="text-xs text-yellow-600 ml-1">(已禁用)</span>{% endif %}
+                        {% if not ds.enabled %}<span class="text-xs text-yellow-600 dark:text-yellow-400 ml-1">(已禁用)</span>{% endif %}
                     </td>
-                    <td class="py-3 px-2 font-mono text-xs text-gray-600">{{ ds.current_ip }}</td>
-                    <td class="py-3 px-2 text-gray-500">{{ ds.last_check_at }}</td>
+                    <td class="py-3 px-2 font-mono text-xs text-gray-600 dark:text-gray-400">{{ ds.current_ip }}</td>
+                    <td class="py-3 px-2 text-gray-500 dark:text-gray-400">{{ ds.last_check_at }}</td>
                     <td class="py-3 px-2 text-right">
-                        <button onclick="checkDomain('{{ ds.id }}')" class="text-blue-600 hover:text-blue-800 text-xs font-medium" {% if not ds.enabled %}disabled class="text-gray-300"{% endif %}>
+                        <button onclick="checkDomain('{{ ds.id }}')" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-xs font-medium" {% if not ds.enabled %}disabled class="text-gray-300"{% endif %}>
                             立即检查
                         </button>
                     </td>
@@ -81,9 +81,9 @@
         </table>
     </div>
     {% else %}
-    <div class="text-center py-8 text-gray-400">
+    <div class="text-center py-8 text-gray-400 dark:text-gray-500">
         <p>暂无域名配置</p>
-        <a href="/domains" class="text-blue-600 hover:text-blue-800 mt-2 inline-block">前往添加域名</a>
+        <a href="/domains" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mt-2 inline-block">前往添加域名</a>
     </div>
     {% endif %}
 </div>

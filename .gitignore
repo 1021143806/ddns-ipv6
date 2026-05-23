@@ -8,6 +8,7 @@ venv/
 
 # Sensitive config
 config/env.toml
+config/old/*
 
 # Backup
 backup/
