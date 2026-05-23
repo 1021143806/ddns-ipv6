@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - DDNS IPv6{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">仪表盘</h1>
+    <p class="text-gray-500 mt-1">DDNS IPv6 服务运行状态概览</p>
+</div>
+
+<!-- 统计卡片 -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="card">
+        <div class="text-3xl font-bold text-blue-600">{{ total_domains }}</div>
+        <div class="text-sm text-gray-500 mt-1">域名总数</div>
+    </div>
+    <div class="card">
+        <div class="text-3xl font-bold text-green-600">{{ online_count }}</div>
+        <div class="text-sm text-gray-500 mt-1">在线正常</div>
+    </div>
+    <div class="card">
+        <div class="text-3xl font-bold text-orange-600">{{ today_updates }}</div>
+        <div class="text-sm text-gray-500 mt-1">今日更新</div>
+    </div>
+    <div class="card">
+        <div class="text-3xl font-bold text-red-600">{{ error_count }}</div>
+        <div class="text-sm text-gray-500 mt-1">异常</div>
+    </div>
+</div>
+
+<!-- 操作按钮 -->
+<div class="flex space-x-3 mb-6">
+    <button onclick="checkAll()" class="btn-primary" id="btn-check-all">
+        🔄 检查全部域名
+    </button>
+    <a href="/domains" class="btn-secondary">管理域名</a>
+</div>
+
+<!-- 域名状态列表 -->
+<div class="card">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">域名状态</h2>
+    {% if domain_statuses %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">状态</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">域名</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">当前 IPv6</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">最后检查</th>
+                    <th class="text-right py-3 px-2 font-medium text-gray-500">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ds in domain_statuses %}
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="py-3 px-2">
+                        {% if not ds.enabled %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400" title="已禁用"></span>
+                        {% elif ds.status == 'ok' %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500" title="正常"></span>
+                        {% elif ds.status == 'error' %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500" title="异常"></span>
+                        {% else %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" title="未知"></span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-2 font-medium text-gray-900">
+                        {{ ds.record_name }}
+                        {% if not ds.enabled %}<span class="text-xs text-yellow-600 ml-1">(已禁用)</span>{% endif %}
+                    </td>
+                    <td class="py-3 px-2 font-mono text-xs text-gray-600">{{ ds.current_ip }}</td>
+                    <td class="py-3 px-2 text-gray-500">{{ ds.last_check_at }}</td>
+                    <td class="py-3 px-2 text-right">
+                        <button onclick="checkDomain('{{ ds.id }}')" class="text-blue-600 hover:text-blue-800 text-xs font-medium" {% if not ds.enabled %}disabled class="text-gray-300"{% endif %}>
+                            立即检查
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-gray-400">
+        <p>暂无域名配置</p>
+        <a href="/domains" class="text-blue-600 hover:text-blue-800 mt-2 inline-block">前往添加域名</a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function checkDomain(domainId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '检查中...';
+    try {
+        const resp = await fetch(`/api/domains/${domainId}/check`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert(`检查完成: ${data.result.message}`);
+            location.reload();
+        } else {
+            alert('检查失败');
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '立即检查';
+}
+
+async function checkAll() {
+    const btn = document.getElementById('btn-check-all');
+    btn.disabled = true;
+    btn.textContent = '检查中...';
+    try {
+        const resp = await fetch('/api/domains/check-all', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            const msgs = data.results.map(r => `${r.record_name || r.domain_id}: ${r.message}`).join('\n');
+            alert(`全部检查完成:\n${msgs}`);
+            location.reload();
+        } else {
+            alert('检查失败');
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '🔄 检查全部域名';
+}
+</script>
+{% endblock %}

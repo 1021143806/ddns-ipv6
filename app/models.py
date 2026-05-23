@@ -1,0 +1,187 @@
+"""SQLite 数据层：操作日志 + 域名状态快照"""
+
+import os
+import sqlite3
+import threading
+from datetime import datetime, timezone
+
+# 数据库文件路径
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(PROJECT_DIR, "data", "ddns.db")
+
+# 线程局部存储：每个线程复用同一个连接
+_local = threading.local()
+
+
+def get_db() -> sqlite3.Connection:
+    """获取当前线程的数据库连接（复用），自动创建目录和表"""
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        _init_tables(conn)
+        _local.conn = conn
+    return conn
+
+
+def _init_tables(conn: sqlite3.Connection) -> None:
+    """初始化数据库表"""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ddns_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain_id TEXT NOT NULL,
+            record_name TEXT NOT NULL,
+            action TEXT NOT NULL,
+            old_ip TEXT,
+            new_ip TEXT,
+            message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS domain_status (
+            domain_id TEXT PRIMARY KEY,
+            record_name TEXT NOT NULL,
+            current_ip TEXT,
+            last_check_at TIMESTAMP,
+            last_update_at TIMESTAMP,
+            status TEXT DEFAULT 'unknown'
+        )
+    """)
+    conn.commit()
+
+
+# ============================================================
+# 日志操作
+# ============================================================
+
+def add_log(
+    domain_id: str,
+    record_name: str,
+    action: str,
+    old_ip: str | None = None,
+    new_ip: str | None = None,
+    message: str = "",
+) -> int:
+    """添加操作日志，返回日志 ID"""
+    conn = get_db()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cursor = conn.execute(
+        "INSERT INTO ddns_logs (domain_id, record_name, action, old_ip, new_ip, message, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (domain_id, record_name, action, old_ip, new_ip, message, now),
+    )
+    conn.commit()
+    conn.close()
+    return cursor.lastrowid
+
+
+def get_logs(
+    domain_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """查询操作日志（分页）"""
+    conn = get_db()
+    if domain_id:
+        rows = conn.execute(
+            "SELECT * FROM ddns_logs WHERE domain_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+            (domain_id, limit, offset),
+        ).fetchall()
+        total = conn.execute(
+            "SELECT COUNT(*) FROM ddns_logs WHERE domain_id = ?", (domain_id,)
+        ).fetchone()[0]
+    else:
+        rows = conn.execute(
+            "SELECT * FROM ddns_logs ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM ddns_logs").fetchone()[0]
+    conn.close()
+    return {
+        "logs": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def get_today_update_count() -> int:
+    """获取今日更新次数"""
+    conn = get_db()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    row = conn.execute(
+        "SELECT COUNT(*) FROM ddns_logs WHERE action IN ('create', 'update') AND date(created_at) = ?",
+        (today,),
+    ).fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+# ============================================================
+# 域名状态操作
+# ============================================================
+
+def upsert_domain_status(
+    domain_id: str,
+    record_name: str,
+    current_ip: str | None = None,
+    status: str = "unknown",
+    is_update: bool = False,
+) -> None:
+    """更新或插入域名状态"""
+    conn = get_db()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    existing = conn.execute(
+        "SELECT domain_id FROM domain_status WHERE domain_id = ?", (domain_id,)
+    ).fetchone()
+
+    if existing:
+        if is_update:
+            conn.execute(
+                "UPDATE domain_status SET current_ip=?, last_check_at=?, last_update_at=?, status=? "
+                "WHERE domain_id=?",
+                (current_ip, now, now, status, domain_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE domain_status SET current_ip=?, last_check_at=?, status=? "
+                "WHERE domain_id=?",
+                (current_ip, now, status, domain_id),
+            )
+    else:
+        conn.execute(
+            "INSERT INTO domain_status (domain_id, record_name, current_ip, last_check_at, status) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (domain_id, record_name, current_ip, now, status),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_all_domain_status() -> list[dict]:
+    """获取所有域名状态"""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM domain_status").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_domain_status(domain_id: str) -> dict | None:
+    """获取单个域名状态"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM domain_status WHERE domain_id = ?", (domain_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_domain_status(domain_id: str) -> None:
+    """删除域名状态"""
+    conn = get_db()
+    conn.execute("DELETE FROM domain_status WHERE domain_id = ?", (domain_id,))
+    conn.commit()
+    conn.close()

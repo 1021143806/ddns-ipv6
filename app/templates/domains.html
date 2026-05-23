@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}域名管理 - DDNS IPv6{% endblock %}
+{% block content %}
+
+<div class="flex justify-between items-center mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">域名管理</h1>
+        <p class="text-gray-500 mt-1">管理 DDNS 解析域名</p>
+    </div>
+    <button onclick="showAddModal()" class="btn-primary">+ 添加域名</button>
+</div>
+
+<!-- 域名列表 -->
+<div class="card">
+    {% if domains %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">状态</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">域名</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">类型</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">子域名ID</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">TTL</th>
+                    <th class="text-left py-3 px-2 font-medium text-gray-500">当前IP</th>
+                    <th class="text-right py-3 px-2 font-medium text-gray-500">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in domains %}
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="py-3 px-2">
+                        {% if not d.enabled %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400" title="已禁用"></span>
+                        {% elif d.status == 'ok' %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500" title="正常"></span>
+                        {% elif d.status == 'error' %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500" title="异常"></span>
+                        {% else %}
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" title="未知"></span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-2 font-medium text-gray-900">{{ d.record_name }}</td>
+                    <td class="py-3 px-2 text-gray-600">{{ d.record_type }}</td>
+                    <td class="py-3 px-2 text-gray-600">{{ d.subdomain_id }}</td>
+                    <td class="py-3 px-2 text-gray-600">{{ d.ttl }}s</td>
+                    <td class="py-3 px-2 font-mono text-xs text-gray-600">{{ d.current_ip }}</td>
+                    <td class="py-3 px-2 text-right space-x-2">
+                        <button onclick="checkDomain('{{ d.id }}')" class="text-green-600 hover:text-green-800 text-xs font-medium" {% if not d.enabled %}disabled class="text-gray-300"{% endif %}>检查</button>
+                        <button onclick='editDomain({{ d | tojson }})' class="text-blue-600 hover:text-blue-800 text-xs font-medium">编辑</button>
+                        <button onclick="deleteDomain('{{ d.id }}', '{{ d.record_name }}')" class="text-red-600 hover:text-red-800 text-xs font-medium">删除</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-gray-400">
+        <p>暂无域名，点击右上角"添加域名"开始</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 添加/编辑域名模态框 -->
+<div id="domain-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4" id="modal-title">添加域名</h2>
+        <form id="domain-form" class="space-y-4">
+            <input type="hidden" id="form-method" value="POST">
+            <input type="hidden" id="form-domain-id" value="">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">域名记录名 *</label>
+                <input type="text" id="form-record-name" class="input-field" placeholder="ipv6.example.com" required>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">子域名 ID *</label>
+                    <input type="number" id="form-subdomain-id" class="input-field" placeholder="12345" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">记录类型</label>
+                    <select id="form-record-type" class="input-field">
+                        <option value="AAAA">AAAA</option>
+                        <option value="A">A</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">TTL (秒)</label>
+                    <input type="number" id="form-ttl" class="input-field" value="600">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">检查间隔 (秒)</label>
+                    <input type="number" id="form-check-interval" class="input-field" placeholder="使用全局设置">
+                </div>
+            </div>
+            <div class="flex items-center">
+                <input type="checkbox" id="form-enabled" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                <label class="ml-2 text-sm text-gray-700">启用</label>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button type="button" onclick="closeModal()" class="btn-secondary">取消</button>
+                <button type="submit" class="btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAddModal() {
+    document.getElementById('modal-title').textContent = '添加域名';
+    document.getElementById('form-method').value = 'POST';
+    document.getElementById('form-domain-id').value = '';
+    document.getElementById('form-record-name').value = '';
+    document.getElementById('form-subdomain-id').value = '';
+    document.getElementById('form-record-type').value = 'AAAA';
+    document.getElementById('form-ttl').value = '600';
+    document.getElementById('form-check-interval').value = '';
+    document.getElementById('form-enabled').checked = true;
+    document.getElementById('domain-modal').classList.remove('hidden');
+}
+
+function editDomain(domain) {
+    document.getElementById('modal-title').textContent = '编辑域名';
+    document.getElementById('form-method').value = 'PUT';
+    document.getElementById('form-domain-id').value = domain.id;
+    document.getElementById('form-record-name').value = domain.record_name;
+    document.getElementById('form-subdomain-id').value = domain.subdomain_id;
+    document.getElementById('form-record-type').value = domain.record_type;
+    document.getElementById('form-ttl').value = domain.ttl;
+    document.getElementById('form-check-interval').value = domain.check_interval || '';
+    document.getElementById('form-enabled').checked = domain.enabled;
+    document.getElementById('domain-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('domain-modal').classList.add('hidden');
+}
+
+document.getElementById('domain-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const method = document.getElementById('form-method').value;
+    const domainId = document.getElementById('form-domain-id').value;
+
+    const body = {
+        record_name: document.getElementById('form-record-name').value,
+        subdomain_id: parseInt(document.getElementById('form-subdomain-id').value),
+        record_type: document.getElementById('form-record-type').value,
+        ttl: parseInt(document.getElementById('form-ttl').value),
+        enabled: document.getElementById('form-enabled').checked,
+    };
+
+    const checkInterval = document.getElementById('form-check-interval').value;
+    if (checkInterval) body.check_interval = parseInt(checkInterval);
+
+    try {
+        let url = '/api/domains';
+        let fetchMethod = 'POST';
+        if (method === 'PUT') {
+            url = `/api/domains/${domainId}`;
+            fetchMethod = 'PUT';
+        }
+
+        const resp = await fetch(url, {
+            method: fetchMethod,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            closeModal();
+            location.reload();
+        } else {
+            alert('操作失败: ' + (data.detail || '未知错误'));
+        }
+    } catch (err) {
+        alert('请求失败: ' + err.message);
+    }
+});
+
+async function deleteDomain(id, name) {
+    if (!confirm(`确定要删除域名 "${name}" 吗？此操作不可撤销。`)) return;
+    try {
+        const resp = await fetch(`/api/domains/${id}`, { method: 'DELETE' });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const data = await resp.json();
+            alert('删除失败: ' + (data.detail || '未知错误'));
+        }
+    } catch (err) {
+        alert('请求失败: ' + err.message);
+    }
+}
+
+async function checkDomain(domainId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+        const resp = await fetch(`/api/domains/${domainId}/check`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert(data.result.message);
+            location.reload();
+        } else {
+            alert('检查失败');
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '检查';
+}
+
+// 点击遮罩关闭
+document.getElementById('domain-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}

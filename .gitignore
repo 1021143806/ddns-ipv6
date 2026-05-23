@@ -12,8 +12,14 @@ config/env.toml
 # Backup
 backup/
 
+# Data (SQLite)
+data/
+
 # Test outputs (keep test scripts)
 test/__pycache__/
+
+# Plans
+plans/
 
 # IDE
 .vscode/
