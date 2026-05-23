@@ -3,73 +3,73 @@
 {% block content %}
 
 <div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">操作日志</h1>
-    <p class="text-gray-500 dark:text-gray-400 mt-1">DDNS 更新操作记录</p>
+    <h1 style="font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">操作日志</h1>
+    <p style="color:var(--text-secondary);margin-top:0.2rem;font-size:0.9rem;">DDNS 更新操作记录</p>
 </div>
 
 <!-- 筛选 -->
-<div class="card mb-4">
-    <div class="flex items-center space-x-4">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">按域名筛选:</label>
-        <select id="filter-domain" class="input-field w-auto" onchange="filterLogs()">
+<div class="mac-card" style="padding:1rem 1.5rem;margin-bottom:1rem;">
+    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+        <label style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);">按域名筛选:</label>
+        <select id="filter-domain" class="mac-input" style="width:auto;min-width:160px;padding:0.4rem 0.7rem;font-size:0.85rem;" onchange="filterLogs()">
             <option value="">全部域名</option>
             {% for d in domains %}
             <option value="{{ d.get('id', d.record_name) }}">{{ d.record_name }}</option>
             {% endfor %}
         </select>
-        <span class="text-sm text-gray-500 dark:text-gray-400">共 {{ total }} 条记录</span>
+        <span style="font-size:0.82rem;color:var(--text-secondary);">共 {{ total }} 条记录</span>
     </div>
 </div>
 
 <!-- 日志列表 -->
-<div class="card">
+<div class="mac-card">
     {% if logs %}
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="mac-table">
             <thead>
-                <tr class="border-b border-gray-200 dark:border-gray-700">
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400 w-40">时间</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">域名</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">操作</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">旧 IP</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">新 IP</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">消息</th>
+                <tr>
+                    <th style="width:150px;">时间</th>
+                    <th>域名</th>
+                    <th>操作</th>
+                    <th>旧 IP</th>
+                    <th>新 IP</th>
+                    <th>消息</th>
                 </tr>
             </thead>
             <tbody>
                 {% for log in logs %}
-                <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td class="py-3 px-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ log.created_at }}</td>
-                    <td class="py-3 px-2 font-medium text-gray-900 dark:text-gray-100">{{ log.record_name }}</td>
-                    <td class="py-3 px-2">
+                <tr>
+                    <td style="color:var(--text-secondary);font-size:0.82rem;white-space:nowrap;">{{ log.created_at }}</td>
+                    <td><span style="font-weight:500;">{{ log.record_name }}</span></td>
+                    <td>
                         {% if log.action == 'create' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300">创建</span>
+                        <span class="mac-badge" style="background:rgba(52,199,89,0.15);color:#34c759;">创建</span>
                         {% elif log.action == 'update' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">更新</span>
+                        <span class="mac-badge" style="background:rgba(0,122,255,0.15);color:#007aff;">更新</span>
                         {% elif log.action == 'skip' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">跳过</span>
+                        <span class="mac-badge" style="background:rgba(142,142,147,0.15);color:#8e8e93;">跳过</span>
                         {% elif log.action == 'error' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">错误</span>
+                        <span class="mac-badge" style="background:rgba(255,59,48,0.15);color:#ff3b30;">错误</span>
                         {% elif log.action == 'config_add' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">添加配置</span>
+                        <span class="mac-badge" style="background:rgba(175,82,222,0.15);color:#af52de;">添加配置</span>
                         {% elif log.action == 'config_update' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">更新配置</span>
+                        <span class="mac-badge" style="background:rgba(88,86,214,0.15);color:#5856d6;">更新配置</span>
                         {% elif log.action == 'config_delete' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300">删除配置</span>
+                        <span class="mac-badge" style="background:rgba(255,149,0,0.15);color:#ff9500;">删除配置</span>
                         {% else %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ log.action }}</span>
+                        <span class="mac-badge" style="background:rgba(142,142,147,0.15);color:#8e8e93;">{{ log.action }}</span>
                         {% endif %}
                     </td>
-                    <td class="py-3 px-2 font-mono text-xs text-gray-500 dark:text-gray-400">{{ log.old_ip or '-' }}</td>
-                    <td class="py-3 px-2 font-mono text-xs text-gray-900 dark:text-gray-100">{{ log.new_ip or '-' }}</td>
-                    <td class="py-3 px-2 text-gray-600 dark:text-gray-400 max-w-xs truncate">{{ log.message }}</td>
+                    <td style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-secondary);">{{ log.old_ip or '-' }}</td>
+                    <td style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-primary);">{{ log.new_ip or '-' }}</td>
+                    <td style="color:var(--text-secondary);font-size:0.85rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.message }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     {% else %}
-    <div class="text-center py-8 text-gray-400 dark:text-gray-500">
+    <div style="text-align:center;padding:2rem 0;color:var(--text-secondary);">
         <p>暂无操作日志</p>
     </div>
     {% endif %}

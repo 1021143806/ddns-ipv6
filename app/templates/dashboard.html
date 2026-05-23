@@ -3,77 +3,73 @@
 {% block content %}
 
 <div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">仪表盘</h1>
-    <p class="text-gray-500 dark:text-gray-400 mt-1">DDNS IPv6 服务运行状态概览</p>
+    <h1 style="font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">仪表盘</h1>
+    <p style="color:var(--text-secondary);margin-top:0.2rem;font-size:0.9rem;">DDNS IPv6 服务运行状态概览</p>
 </div>
 
 <!-- 统计卡片 -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <div class="card">
-        <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">{{ total_domains }}</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">域名总数</div>
+    <div class="mac-card mac-stat">
+        <div class="mac-stat-value" style="color:var(--apple-blue);">{{ total_domains }}</div>
+        <div class="mac-stat-label">域名总数</div>
     </div>
-    <div class="card">
-        <div class="text-3xl font-bold text-green-600 dark:text-green-400">{{ online_count }}</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">在线正常</div>
+    <div class="mac-card mac-stat">
+        <div class="mac-stat-value" style="color:#34c759;">{{ online_count }}</div>
+        <div class="mac-stat-label">在线正常</div>
     </div>
-    <div class="card">
-        <div class="text-3xl font-bold text-orange-600 dark:text-orange-400">{{ today_updates }}</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">今日更新</div>
+    <div class="mac-card mac-stat">
+        <div class="mac-stat-value" style="color:#ff9f0a;">{{ today_updates }}</div>
+        <div class="mac-stat-label">今日更新</div>
     </div>
-    <div class="card">
-        <div class="text-3xl font-bold text-red-600 dark:text-red-400">{{ error_count }}</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">异常</div>
+    <div class="mac-card mac-stat">
+        <div class="mac-stat-value" style="color:#ff3b30;">{{ error_count }}</div>
+        <div class="mac-stat-label">异常</div>
     </div>
 </div>
 
 <!-- 操作按钮 -->
 <div class="flex space-x-3 mb-6">
-    <button onclick="checkAll()" class="btn-primary" id="btn-check-all">
-        🔄 检查全部域名
-    </button>
-    <a href="/domains" class="btn-secondary">管理域名</a>
+    <button onclick="checkAll()" class="mac-btn" id="btn-check-all">🔄 检查全部域名</button>
+    <a href="/domains" class="mac-btn mac-btn-secondary">管理域名</a>
 </div>
 
 <!-- 域名状态列表 -->
-<div class="card">
-    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">域名状态</h2>
+<div class="mac-card">
+    <h2 style="font-size:1rem;font-weight:600;color:var(--text-primary);margin-bottom:1rem;">域名状态</h2>
     {% if domain_statuses %}
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="mac-table">
             <thead>
-                <tr class="border-b border-gray-200 dark:border-gray-700">
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">状态</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">域名</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">当前 IPv6</th>
-                    <th class="text-left py-3 px-2 font-medium text-gray-500 dark:text-gray-400">最后检查</th>
-                    <th class="text-right py-3 px-2 font-medium text-gray-500 dark:text-gray-400">操作</th>
+                <tr>
+                    <th style="width:40px;">状态</th>
+                    <th>域名</th>
+                    <th>当前 IPv6</th>
+                    <th>最后检查</th>
+                    <th style="text-align:right;">操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for ds in domain_statuses %}
-                <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td class="py-3 px-2">
+                <tr>
+                    <td>
                         {% if not ds.enabled %}
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400" title="已禁用"></span>
+                        <span class="status-dot" style="background:#ff9f0a;" title="已禁用"></span>
                         {% elif ds.status == 'ok' %}
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500" title="正常"></span>
+                        <span class="status-dot" style="background:#34c759;" title="正常"></span>
                         {% elif ds.status == 'error' %}
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500" title="异常"></span>
+                        <span class="status-dot" style="background:#ff3b30;" title="异常"></span>
                         {% else %}
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" title="未知"></span>
+                        <span class="status-dot" style="background:#aeaeb2;" title="未知"></span>
                         {% endif %}
                     </td>
-                    <td class="py-3 px-2 font-medium text-gray-900 dark:text-gray-100">
-                        {{ ds.record_name }}
-                        {% if not ds.enabled %}<span class="text-xs text-yellow-600 dark:text-yellow-400 ml-1">(已禁用)</span>{% endif %}
+                    <td>
+                        <span style="font-weight:500;">{{ ds.record_name }}</span>
+                        {% if not ds.enabled %}<span class="mac-badge" style="background:rgba(255,159,10,0.15);color:#ff9f0a;margin-left:0.4rem;">已禁用</span>{% endif %}
                     </td>
-                    <td class="py-3 px-2 font-mono text-xs text-gray-600 dark:text-gray-400">{{ ds.current_ip }}</td>
-                    <td class="py-3 px-2 text-gray-500 dark:text-gray-400">{{ ds.last_check_at }}</td>
-                    <td class="py-3 px-2 text-right">
-                        <button onclick="checkDomain('{{ ds.id }}')" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-xs font-medium" {% if not ds.enabled %}disabled class="text-gray-300"{% endif %}>
-                            立即检查
-                        </button>
+                    <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);">{{ ds.current_ip }}</td>
+                    <td style="color:var(--text-secondary);font-size:0.82rem;">{{ ds.last_check_at }}</td>
+                    <td style="text-align:right;">
+                        <button onclick="checkDomain('{{ ds.id }}')" class="mac-link" style="font-size:0.82rem;font-weight:500;" {% if not ds.enabled %}disabled style="color:#aeaeb2;cursor:not-allowed;"{% endif %}>立即检查</button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -81,9 +77,9 @@
         </table>
     </div>
     {% else %}
-    <div class="text-center py-8 text-gray-400 dark:text-gray-500">
+    <div style="text-align:center;padding:2rem 0;color:var(--text-secondary);">
         <p>暂无域名配置</p>
-        <a href="/domains" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mt-2 inline-block">前往添加域名</a>
+        <a href="/domains" class="mac-link" style="margin-top:0.5rem;display:inline-block;">前往添加域名</a>
     </div>
     {% endif %}
 </div>

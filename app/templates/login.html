@@ -3,6 +3,15 @@
 {% block content %}
 {% block styles %}
 <style>
+    body {
+        background: transparent !important;
+        min-height: 100vh;
+    }
+    main {
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
     :root {
         --apple-blue: #0071e3;
         --apple-blue-hover: #0077ed;
@@ -28,8 +37,62 @@
         --transition-smooth: 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
     }
 
+    /* 暗黑模式 */
+    .dark {
+        --bg-soft: #1c1c1e;
+        --card-bg: rgba(44, 44, 46, 0.85);
+        --card-border: rgba(255, 255, 255, 0.08);
+        --text-primary: #f5f5f7;
+        --text-secondary: #98989d;
+        --input-bg: #2c2c2e;
+        --input-border: #48484a;
+        --input-border-focus: #0a84ff;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.2);
+        --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2);
+        --shadow-glow-blue: 0 0 0 4px rgba(10, 132, 255, 0.2);
+        --apple-blue: #0a84ff;
+        --apple-blue-hover: #409cff;
+        --apple-blue-active: #0066d9;
+    }
+    .dark .mac-ambient-glow--blue {
+        background: radial-gradient(circle, rgba(10, 132, 255, 0.2) 0%, rgba(10, 132, 255, 0.05) 45%, transparent 70%);
+    }
+    .dark .mac-ambient-glow--purple {
+        background: radial-gradient(circle, rgba(120, 80, 200, 0.18) 0%, rgba(120, 80, 200, 0.05) 45%, transparent 70%);
+    }
+    .dark .mac-ambient-glow--warm {
+        background: radial-gradient(circle, rgba(200, 120, 80, 0.12) 0%, rgba(200, 120, 80, 0.04) 45%, transparent 70%);
+    }
+    .dark .mac-input:hover {
+        border-color: #5a5a5e;
+        background: #363638;
+    }
+    .dark .mac-input:focus {
+        border-color: var(--input-border-focus);
+        background: #3a3a3c;
+    }
+    .dark .mac-input:-webkit-autofill {
+        -webkit-box-shadow: 0 0 0 30px #2c2c2e inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+        border-color: var(--input-border);
+    }
+    .dark .mac-input:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 30px #3a3a3c inset !important;
+        border-color: var(--input-border-focus);
+    }
+    .dark .mac-alert {
+        background: rgba(239, 68, 68, 0.12);
+        border-color: rgba(239, 68, 68, 0.3);
+        border-left-color: #ef4444;
+        color: #fca5a5;
+    }
+    .dark .mac-card:hover {
+        box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
     .mac-login-wrapper {
-        min-height: 80vh;
+        min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -423,7 +486,7 @@
 </style>
 {% endblock %}
 
-<div class="mac-login-wrapper">
+<div class="mac-login-wrapper" style="background: var(--bg-soft);">
     <!-- 背景光晕 -->
     <div class="mac-ambient-glow mac-ambient-glow--blue"></div>
     <div class="mac-ambient-glow mac-ambient-glow--purple"></div>
