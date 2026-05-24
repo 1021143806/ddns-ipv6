@@ -33,6 +33,23 @@
     <a href="/domains" class="mac-btn mac-btn-secondary">管理域名</a>
 </div>
 
+<!-- API 调用统计 + 折线图 -->
+<div class="mac-card mb-6" id="api-stats-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 style="font-size:1rem;font-weight:600;color:var(--text-primary);">API 调用统计</h2>
+        <div id="api-rate-badge" style="display:flex;align-items:center;gap:0.5rem;">
+            <span style="font-size:0.82rem;color:var(--text-secondary);">加载中...</span>
+        </div>
+    </div>
+    <div style="position:relative;height:180px;">
+        <canvas id="apiChart"></canvas>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:0.75rem;font-size:0.78rem;color:var(--text-secondary);">
+        <span>最近 24 小时 API 调用</span>
+        <span>阈值: 30 次/小时</span>
+    </div>
+</div>
+
 <!-- 域名状态列表 -->
 <div class="mac-card">
     <h2 style="font-size:1rem;font-weight:600;color:var(--text-primary);margin-bottom:1rem;">域名状态</h2>
@@ -87,7 +104,122 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.x.x/dist/chart.umd.min.js"></script>
 <script>
+// API 调用折线图
+let apiChart = null;
+async function loadApiChart() {
+    try {
+        const resp = await fetch('/api/stats/hourly?hours=24');
+        const data = await resp.json();
+        const stats = data.stats;
+        const current = data.current;
+
+        // 更新速率状态
+        const badge = document.getElementById('api-rate-badge');
+        const pct = Math.round((current.current / current.limit) * 100);
+        const blocked = current.blocked;
+        badge.innerHTML = `
+            <span style="font-size:0.85rem;font-weight:600;color:${blocked ? '#ff3b30' : (pct > 80 ? '#ff9f0a' : '#34c759')}">
+                ${current.current}/${current.limit}
+            </span>
+            <span style="font-size:0.78rem;color:var(--text-secondary);">(${pct}%)</span>
+            ${blocked ? '<span class="mac-badge" style="background:rgba(255,59,48,0.15);color:#ff3b30;">已限流</span>' : ''}
+        `;
+
+        // 准备图表数据（半小时刻度）
+        const labels = stats.map(s => {
+            const parts = s.hour.split(' ');
+            const time = parts[1] || s.hour;
+            return time.substring(0, 5);
+        });
+        const counts = stats.map(s => s.count);
+        const limitLine = stats.map(() => current.limit);
+
+        const ctx = document.getElementById('apiChart').getContext('2d');
+
+        // 暗黑模式适配
+        const isDark = document.documentElement.classList.contains('dark');
+        const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+        const textColor = isDark ? '#98989d' : '#86868b';
+
+        if (apiChart) apiChart.destroy();
+
+        apiChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'API 调用',
+                        data: counts,
+                        borderColor: blocked ? '#ff3b30' : '#007aff',
+                        backgroundColor: blocked ? 'rgba(255,59,48,0.1)' : 'rgba(0,122,255,0.08)',
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointBackgroundColor: blocked ? '#ff3b30' : '#007aff',
+                        pointBorderColor: isDark ? '#1c1c1e' : '#fff',
+                        pointBorderWidth: 2,
+                        fill: true,
+                        tension: 0.35,
+                    },
+                    {
+                        label: '限制阈值',
+                        data: limitLine,
+                        borderColor: '#ff3b30',
+                        borderWidth: 2,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: isDark ? 'rgba(44,44,46,0.95)' : 'rgba(255,255,255,0.95)',
+                        titleColor: isDark ? '#f5f5f7' : '#1d1d1f',
+                        bodyColor: isDark ? '#98989d' : '#86868b',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        borderWidth: 1,
+                        cornerRadius: 10,
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: textColor,
+                            font: { size: 10, family: '-apple-system, sans-serif' },
+                            maxRotation: 0,
+                            maxTicksLimit: 12,
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: gridColor },
+                        ticks: {
+                            color: textColor,
+                            font: { size: 10, family: '-apple-system, sans-serif' },
+                            stepSize: 5,
+                        }
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        document.getElementById('api-rate-badge').innerHTML =
+            '<span style="font-size:0.82rem;color:var(--text-secondary);">加载失败</span>';
+    }
+}
+
+// 页面加载后加载图表
+document.addEventListener('DOMContentLoaded', loadApiChart);
+
 async function checkDomain(domainId) {
     const btn = event.target;
     btn.disabled = true;

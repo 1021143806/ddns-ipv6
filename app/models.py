@@ -178,3 +178,103 @@ def delete_domain_status(domain_id: str) -> None:
     conn = get_db()
     conn.execute("DELETE FROM domain_status WHERE domain_id = ?", (domain_id,))
     conn.commit()
+
+
+# ============================================================
+# API 调用计数 + 速率限制
+# ============================================================
+
+API_HOURLY_LIMIT = 30  # dnshe API 每小时限制
+
+
+def _init_api_call_table(conn: sqlite3.Connection) -> None:
+    """初始化 API 调用日志表"""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS api_call_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint TEXT NOT NULL,
+            action TEXT NOT NULL,
+            success INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_api_call_created
+        ON api_call_log(created_at)
+    """)
+    conn.commit()
+
+
+# 覆盖 _init_tables 以包含新表
+_orig_init = _init_tables
+def _init_tables(conn: sqlite3.Connection) -> None:
+    _orig_init(conn)
+    _init_api_call_table(conn)
+
+
+def record_api_call(endpoint: str, action: str, success: bool = True) -> None:
+    """记录一次 API 调用"""
+    conn = get_db()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO api_call_log (endpoint, action, success, created_at) VALUES (?, ?, ?, ?)",
+        (endpoint, action, 1 if success else 0, now),
+    )
+    conn.commit()
+
+
+def get_hourly_api_count() -> int:
+    """获取当前小时内的 API 调用次数"""
+    conn = get_db()
+    now = datetime.now(timezone.utc)
+    hour_start = now.strftime("%Y-%m-%d %H:00:00")
+    row = conn.execute(
+        "SELECT COUNT(*) FROM api_call_log WHERE created_at >= ?",
+        (hour_start,),
+    ).fetchone()
+    return row[0] if row else 0
+
+
+def get_hourly_api_stats(hours: int = 24) -> list[dict]:
+    """获取最近 N 小时的 API 调用统计（按半小时聚合）
+
+    Returns:
+        [{"hour": "2026-05-23 08:00", "count": 5, "limit": 30},
+         {"hour": "2026-05-23 08:30", "count": 3, "limit": 30}, ...]
+    """
+    conn = get_db()
+    from datetime import timedelta
+    start = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:00:00")
+    rows = conn.execute(
+        """SELECT strftime('%Y-%m-%d %H:', created_at) ||
+                  CASE
+                      WHEN CAST(strftime('%M', created_at) AS INTEGER) < 30 THEN '00'
+                      ELSE '30'
+                  END as slot,
+                  COUNT(*) as count
+           FROM api_call_log
+           WHERE created_at >= ?
+           GROUP BY slot
+           ORDER BY slot ASC""",
+        (start,),
+    ).fetchall()
+
+    result = []
+    for r in rows:
+        result.append({
+            "hour": r["slot"] + ":00",
+            "count": r["count"],
+            "limit": API_HOURLY_LIMIT,
+        })
+    return result
+
+
+def get_api_rate_status() -> dict:
+    """获取当前 API 速率状态"""
+    current = get_hourly_api_count()
+    return {
+        "current": current,
+        "limit": API_HOURLY_LIMIT,
+        "remaining": max(0, API_HOURLY_LIMIT - current),
+        "blocked": current >= API_HOURLY_LIMIT,
+    }

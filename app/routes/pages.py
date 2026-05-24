@@ -198,3 +198,16 @@ async def logs_page(request: Request):
         "total": log_data["total"],
         "domains": domains,
     })
+
+
+@router.get("/dns-records")
+async def dns_records_page(request: Request):
+    """DNS 记录管理页面"""
+    ctx = _auth_context(request)
+    if not ctx["user"]:
+        return RedirectResponse("/login", status_code=302)
+
+    return templates.TemplateResponse(request, "dns_records.html", {
+        "request": request,
+        "user": ctx["user"],
+    })

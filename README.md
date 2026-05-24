@@ -1,5 +1,7 @@
 # DDNS IPv6
 
+
+
 定时检测本机 IPv6 地址变化，通过 [dnshe.com](https://dnshe.com) API 自动更新 AAAA 记录，实现 IPv6 动态域名解析。
 
 **v2.0 新增：现代化 WebUI 管理界面，支持多域名管理、远程添加解析。**

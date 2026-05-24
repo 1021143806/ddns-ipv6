@@ -5,89 +5,67 @@
 <div class="flex justify-between items-center mb-6">
     <div>
         <h1 style="font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">域名管理</h1>
-        <p style="color:var(--text-secondary);margin-top:0.2rem;font-size:0.9rem;">管理 DDNS 解析域名</p>
+        <p style="color:var(--text-secondary);margin-top:0.2rem;font-size:0.9rem;">dnshe.com 所有 DNS 记录 · DDNS 监控域名</p>
     </div>
     <div class="flex space-x-3">
         <button onclick="showRegisterModal()" class="mac-btn mac-btn-success" style="font-size:0.85rem;">✨ 创建子域名</button>
-        <button onclick="showAddModal()" class="mac-btn" style="font-size:0.85rem;">+ 添加域名</button>
+        <button onclick="showAddModal()" class="mac-btn" style="font-size:0.85rem;">+ 添加记录</button>
     </div>
 </div>
 
-<!-- 域名列表 -->
+<!-- 全部 DNS 记录 -->
 <div class="mac-card">
-    {% if domains %}
-    <div class="overflow-x-auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 style="font-size:1rem;font-weight:600;color:var(--text-primary);">全部 DNS 记录 <span id="record-count" style="font-weight:400;color:var(--text-secondary);font-size:0.85rem;"></span></h2>
+        <button onclick="loadRecords()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
+    </div>
+    <div id="records-loading" style="text-align:center;padding:2rem 0;color:var(--text-secondary);">加载中...</div>
+    <div id="records-content" class="overflow-x-auto" style="display:none;">
         <table class="mac-table">
             <thead>
                 <tr>
-                    <th style="width:36px;">状态</th>
+                    <th style="width:36px;">DDNS</th>
                     <th>域名</th>
-                    <th>类型</th>
-                    <th>子域名ID</th>
-                    <th>TTL</th>
-                    <th>当前IP</th>
+                    <th style="width:70px;">类型</th>
+                    <th>记录值</th>
+                    <th style="width:60px;">TTL</th>
+                    <th style="width:80px;">状态</th>
                     <th style="text-align:right;">操作</th>
                 </tr>
             </thead>
-            <tbody>
-                {% for d in domains %}
-                <tr>
-                    <td>
-                        {% if not d.enabled %}
-                        <span class="status-dot" style="background:#ff9f0a;" title="已禁用"></span>
-                        {% elif d.status == 'ok' %}
-                        <span class="status-dot" style="background:#34c759;" title="正常"></span>
-                        {% elif d.status == 'error' %}
-                        <span class="status-dot" style="background:#ff3b30;" title="异常"></span>
-                        {% else %}
-                        <span class="status-dot" style="background:#aeaeb2;" title="未知"></span>
-                        {% endif %}
-                    </td>
-                    <td><span style="font-weight:500;">{{ d.record_name }}</span></td>
-                    <td style="color:var(--text-secondary);">{{ d.record_type }}</td>
-                    <td style="color:var(--text-secondary);">{{ d.subdomain_id }}</td>
-                    <td style="color:var(--text-secondary);">{{ d.ttl }}s</td>
-                    <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);">{{ d.current_ip }}</td>
-                    <td style="text-align:right;white-space:nowrap;">
-                        <button onclick="checkDomain('{{ d.id }}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;" {% if not d.enabled %}disabled style="color:#aeaeb2;cursor:not-allowed;"{% endif %}>检查</button>
-                        <button onclick='editDomain({{ d | tojson }})' class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                        <button onclick="deleteDomain('{{ d.id }}', '{{ d.record_name }}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;" onmouseover="this.style.color='#ff453a'" onmouseout="this.style.color='#ff3b30'">删除</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
+            <tbody id="records-tbody"></tbody>
         </table>
     </div>
-    {% else %}
-    <div style="text-align:center;padding:2rem 0;color:var(--text-secondary);">
-        <p>暂无域名，点击右上角"添加域名"开始</p>
-    </div>
-    {% endif %}
 </div>
 
-<!-- 添加/编辑域名模态框 -->
+<!-- 添加 DNS 记录模态框 -->
 <div id="domain-modal" class="mac-modal-overlay hidden">
     <div class="mac-modal">
-        <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:1.25rem;" id="modal-title">添加域名</h2>
+        <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:1.25rem;" id="modal-title">添加 DNS 记录</h2>
         <form id="domain-form" style="display:flex;flex-direction:column;gap:1rem;">
             <input type="hidden" id="form-method" value="POST">
             <input type="hidden" id="form-domain-id" value="">
             <div>
-                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">域名记录名 *</label>
-                <input type="text" id="form-record-name" class="mac-input" placeholder="ipv6.example.com" required>
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">域名 *</label>
+                <input type="text" id="form-record-name" class="mac-input" placeholder="ddns.ptrel.cc.cd" required>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
                 <div>
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">子域名 ID *</label>
-                    <input type="number" id="form-subdomain-id" class="mac-input" placeholder="12345" required>
+                    <input type="number" id="form-subdomain-id" class="mac-input" placeholder="404037" required>
                 </div>
                 <div>
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">记录类型</label>
                     <select id="form-record-type" class="mac-input">
                         <option value="AAAA">AAAA</option>
                         <option value="A">A</option>
+                        <option value="TXT">TXT</option>
                     </select>
                 </div>
+            </div>
+            <div>
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">记录值 *</label>
+                <input type="text" id="form-record-value" class="mac-input" placeholder="240e:390:364:1771::137">
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
                 <div>
@@ -95,13 +73,13 @@
                     <input type="number" id="form-ttl" class="mac-input" value="600">
                 </div>
                 <div>
-                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">检查间隔 (秒)</label>
-                    <input type="number" id="form-check-interval" class="mac-input" placeholder="使用全局设置">
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">DDNS 检查间隔</label>
+                    <input type="number" id="form-check-interval" class="mac-input" placeholder="不启用 DDNS">
                 </div>
             </div>
             <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;color:var(--text-primary);cursor:pointer;">
                 <input type="checkbox" id="form-enabled" checked style="width:16px;height:16px;accent-color:var(--apple-blue);">
-                启用
+                加入 DDNS 自动更新
             </label>
             <div style="display:flex;justify-content:flex-end;gap:0.6rem;padding-top:0.25rem;">
                 <button type="button" onclick="closeModal()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;">取消</button>
@@ -147,29 +125,79 @@
 
 {% block scripts %}
 <script>
+// DDNS 监控域名列表（从服务端获取）
+const ddnsDomains = {{ domains | tojson }};
+const ddnsMap = {};
+ddnsDomains.forEach(d => { ddnsMap[d.record_name] = d; });
+
+// ===== 加载全部 DNS 记录 =====
+async function loadRecords() {
+    const loading = document.getElementById('records-loading');
+    const content = document.getElementById('records-content');
+    const tbody = document.getElementById('records-tbody');
+    const count = document.getElementById('record-count');
+
+    loading.style.display = 'block';
+    content.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/domains/dns-records');
+        const data = await resp.json();
+        const records = data.records || [];
+
+        count.textContent = `(共 ${records.length} 条)`;
+        tbody.innerHTML = '';
+
+        records.forEach(r => {
+            const name = r.name || '-';
+            const type = r.type || '-';
+            const value = r.content || '-';
+            const ttl = r.ttl || '-';
+            const status = r.status || 'active';
+            const isDDNS = !!ddnsMap[name];
+
+            let typeColor = 'var(--text-secondary)';
+            if (type === 'A') typeColor = '#007aff';
+            else if (type === 'AAAA') typeColor = '#34c759';
+            else if (type === 'TXT') typeColor = '#ff9f0a';
+            else if (type === 'CNAME') typeColor = '#af52de';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+                <td><span style="font-weight:500;">${name}</span></td>
+                <td><span class="mac-badge" style="background:${typeColor}15;color:${typeColor};">${type}</span></td>
+                <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);word-break:break-all;">${value}</td>
+                <td style="color:var(--text-secondary);font-size:0.82rem;">${ttl}s</td>
+                <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
+                <td style="text-align:right;white-space:nowrap;">
+                    ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : ''}
+                    <button onclick="alert('编辑功能开发中')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+                    <button onclick="alert('删除功能开发中')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+    } catch (e) {
+        loading.innerHTML = '<span style="color:#ff3b30;">加载失败: ' + e.message + '</span>';
+    }
+}
+
+// ===== 模态框 =====
 function showAddModal() {
-    document.getElementById('modal-title').textContent = '添加域名';
+    document.getElementById('modal-title').textContent = '添加 DNS 记录';
     document.getElementById('form-method').value = 'POST';
     document.getElementById('form-domain-id').value = '';
     document.getElementById('form-record-name').value = '';
-    document.getElementById('form-subdomain-id').value = '';
+    document.getElementById('form-subdomain-id').value = '404037';
     document.getElementById('form-record-type').value = 'AAAA';
+    document.getElementById('form-record-value').value = '';
     document.getElementById('form-ttl').value = '600';
     document.getElementById('form-check-interval').value = '';
     document.getElementById('form-enabled').checked = true;
-    document.getElementById('domain-modal').classList.remove('hidden');
-}
-
-function editDomain(domain) {
-    document.getElementById('modal-title').textContent = '编辑域名';
-    document.getElementById('form-method').value = 'PUT';
-    document.getElementById('form-domain-id').value = domain.id;
-    document.getElementById('form-record-name').value = domain.record_name;
-    document.getElementById('form-subdomain-id').value = domain.subdomain_id;
-    document.getElementById('form-record-type').value = domain.record_type;
-    document.getElementById('form-ttl').value = domain.ttl;
-    document.getElementById('form-check-interval').value = domain.check_interval || '';
-    document.getElementById('form-enabled').checked = domain.enabled;
     document.getElementById('domain-modal').classList.remove('hidden');
 }
 
@@ -179,87 +207,79 @@ function closeModal() {
 
 document.getElementById('domain-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const method = document.getElementById('form-method').value;
-    const domainId = document.getElementById('form-domain-id').value;
-
-    const body = {
-        record_name: document.getElementById('form-record-name').value,
-        subdomain_id: parseInt(document.getElementById('form-subdomain-id').value),
-        record_type: document.getElementById('form-record-type').value,
-        ttl: parseInt(document.getElementById('form-ttl').value),
-        enabled: document.getElementById('form-enabled').checked,
-    };
-
+    const recordName = document.getElementById('form-record-name').value.trim();
+    const subdomainId = parseInt(document.getElementById('form-subdomain-id').value);
+    const recordType = document.getElementById('form-record-type').value;
+    const recordValue = document.getElementById('form-record-value').value.trim();
+    const ttl = parseInt(document.getElementById('form-ttl').value);
+    const enabled = document.getElementById('form-enabled').checked;
     const checkInterval = document.getElementById('form-check-interval').value;
-    if (checkInterval) body.check_interval = parseInt(checkInterval);
 
+    // 通过 dnshe API 直接创建 DNS 记录
     try {
-        let url = '/api/domains';
-        let fetchMethod = 'POST';
-        if (method === 'PUT') {
-            url = `/api/domains/${domainId}`;
-            fetchMethod = 'PUT';
+        const dnsheResp = await fetch('https://api005.dnshe.com/index.php?m=domain_hub&endpoint=dns_records&action=create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'cfsd_75ae7c349f028271a38a016f09106494',
+                'X-API-Secret': '1755d4dbfc1f04adc8ccc6a072ce52fb482d540548f2d214825331f9a16bc6cc',
+            },
+            body: JSON.stringify({
+                subdomain_id: subdomainId,
+                type: recordType,
+                name: recordName.split('.')[0],
+                content: recordValue,
+                ttl: ttl,
+            }),
+        });
+        const dnsheData = await dnsheResp.json();
+        if (!dnsheData.success) {
+            alert('DNS 记录创建失败: ' + (dnsheData.message || '未知错误'));
+            return;
         }
 
-        const resp = await fetch(url, {
-            method: fetchMethod,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            closeModal();
-            location.reload();
-        } else {
-            alert('操作失败: ' + (data.detail || '未知错误'));
+        // 如果勾选了 DDNS，添加到监控
+        if (enabled) {
+            const ddnsResp = await fetch('/api/domains', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: recordName.split('.')[0],
+                    record_name: recordName,
+                    subdomain_id: subdomainId,
+                    record_type: recordType,
+                    ttl: ttl,
+                    enabled: true,
+                    check_interval: checkInterval ? parseInt(checkInterval) : undefined,
+                }),
+            });
+            if (!ddnsResp.ok) {
+                const ddnsErr = await ddnsResp.json();
+                alert('DNS 记录已创建，但加入 DDNS 监控失败: ' + (ddnsErr.detail || '未知错误'));
+            }
         }
+
+        closeModal();
+        loadRecords();
     } catch (err) {
         alert('请求失败: ' + err.message);
     }
 });
 
-async function deleteDomain(id, name) {
-    if (!confirm(`确定要删除域名 "${name}" 吗？此操作不可撤销。`)) return;
-    try {
-        const resp = await fetch(`/api/domains/${id}`, { method: 'DELETE' });
-        if (resp.ok) {
-            location.reload();
-        } else {
-            const data = await resp.json();
-            alert('删除失败: ' + (data.detail || '未知错误'));
-        }
-    } catch (err) {
-        alert('请求失败: ' + err.message);
-    }
-}
-
 async function checkDomain(domainId) {
-    const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '...';
     try {
         const resp = await fetch(`/api/domains/${domainId}/check`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
             alert(data.result.message);
-            location.reload();
+            loadRecords();
         } else {
             alert('检查失败');
         }
     } catch (e) {
         alert('请求失败: ' + e.message);
     }
-    btn.disabled = false;
-    btn.textContent = '检查';
 }
-
-// 点击遮罩关闭
-document.getElementById('domain-modal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-});
-document.getElementById('register-modal').addEventListener('click', function(e) {
-    if (e.target === this) closeRegisterModal();
-});
 
 // ===== 创建子域名 =====
 function showRegisterModal() {
@@ -281,7 +301,6 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     const btn = document.getElementById('reg-submit-btn');
     btn.disabled = true;
     btn.textContent = '创建中...';
-
     document.getElementById('reg-result').classList.add('hidden');
     document.getElementById('reg-error').classList.add('hidden');
 
@@ -317,5 +336,17 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         btn.textContent = '创建';
     }
 });
+
+// 点击遮罩关闭
+document.getElementById('domain-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+document.getElementById('register-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeRegisterModal();
+});
+
+// 页面加载时自动加载 DNS 记录
+document.addEventListener('DOMContentLoaded', loadRecords);
+</script>
 </script>
 {% endblock %}

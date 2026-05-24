@@ -142,7 +142,7 @@ def api_request(
     method: str = "GET",
     body: dict | None = None,
 ) -> dict | None:
-    """调用 dnshe API
+    """调用 dnshe API（含速率限制保护）
 
     Args:
         config: 配置字典
@@ -155,6 +155,14 @@ def api_request(
     Returns:
         API 响应 JSON，失败返回 None
     """
+    # 速率限制检查：每小时最多 30 次
+    from app.models import get_hourly_api_count, record_api_call, API_HOURLY_LIMIT
+
+    current_count = get_hourly_api_count()
+    if current_count >= API_HOURLY_LIMIT:
+        log(f"[WARN] API 调用次数已达上限 ({API_HOURLY_LIMIT}次/小时)，跳过: {endpoint}/{action}")
+        return None
+
     api_cfg = config["api"]
     base_url = api_cfg["base_url"]
     api_key = api_cfg["api_key"]
@@ -181,18 +189,24 @@ def api_request(
 
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            result = json.loads(resp.read().decode("utf-8"))
+            record_api_call(endpoint, action, success=True)
+            return result
     except urllib.error.HTTPError as e:
         log(f"[ERROR] API HTTP 错误 {e.code}: {e.reason}")
+        record_api_call(endpoint, action, success=False)
         return None
     except urllib.error.URLError as e:
         log(f"[ERROR] API 连接错误: {e.reason}")
+        record_api_call(endpoint, action, success=False)
         return None
     except json.JSONDecodeError as e:
         log(f"[ERROR] API 响应 JSON 解析失败: {e}")
+        record_api_call(endpoint, action, success=False)
         return None
     except Exception as e:
         log(f"[ERROR] API 请求异常: {e}")
+        record_api_call(endpoint, action, success=False)
         return None
 
 
@@ -299,6 +313,34 @@ def update_record(config: dict, domain_cfg: dict, record_id: int, ipv6: str) -> 
 
     log(f"[INFO] 更新 AAAA 记录成功: {ipv6}")
     return True
+
+
+def list_all_dns_records(config: dict, subdomain_id: int) -> list[dict] | None:
+    """获取指定子域名的所有 DNS 记录
+
+    Args:
+        config: 完整配置
+        subdomain_id: 子域名 ID
+
+    Returns:
+        DNS 记录列表，失败返回 None
+    """
+    resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="list",
+        extra_params={"subdomain_id": subdomain_id},
+    )
+
+    if resp is None:
+        return None
+
+    records = resp.get("records", resp.get("data", resp)) if isinstance(resp, dict) else resp
+    if not isinstance(records, list):
+        log(f"[WARN] API 返回格式异常: {resp}")
+        return None
+
+    return records
 
 
 def register_subdomain(config: dict, subdomain: str, rootdomain: str) -> dict | None:

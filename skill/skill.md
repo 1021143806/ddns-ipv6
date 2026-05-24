@@ -128,6 +128,12 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains \
 ## API 文档
 详见 [`doc/api/README.md`](doc/api/README.md)
 
+## 速率限制
+- dnshe API 限制：**30 次/小时**
+- 超出限制时：跳过本次调用，等待下一轮（不缓存，避免积压）
+- 每次 API 调用自动记录到 `api_call_log` 表
+- 仪表盘展示折线图 + 实时速率状态
+
 ## ds 说
 - 2026-05-23: v2.0 重构完成，新增 FastAPI WebUI，支持多域名管理、用户认证、操作日志。
   - 核心逻辑从 ddns.py 提取到 app/core.py，供守护进程和 WebUI 共用
@@ -138,3 +144,6 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains \
   - Nginx HTTPS 反向代理已配置，域名 ddns.ptrel.cc.cd
   - 已注册子域名 ddns.ptrel.cc.cd 并加入 DDNS 监控
   - 已添加"创建子域名"功能，可直接通过 dnshe API 注册子域名
+  - 已添加 API 调用计数 + 速率限制保护（30次/小时）
+  - 仪表盘添加 Chart.js 折线图展示 API 调用趋势
+  - 超出限制时自动跳过，日志记录警告，不缓存积压

@@ -1,7 +1,7 @@
 """域名管理 REST API"""
 
 from fastapi import APIRouter, Request, HTTPException
-from app.core import load_config, save_config, check_and_update_domain, register_subdomain
+from app.core import load_config, save_config, check_and_update_domain, register_subdomain, list_all_dns_records
 from app.models import (
     add_log,
     upsert_domain_status,
@@ -51,6 +51,26 @@ async def list_domains(request: Request):
             "status": status.get("status", "unknown"),
         })
     return {"domains": result}
+
+
+@router.get("/dns-records")
+async def api_list_dns_records(request: Request):
+    """获取 dnshe 上所有 DNS 记录"""
+    require_auth(request, _get_config(request))
+    config = _reload_config(request)
+    domains = config.get("domains", [])
+
+    all_records = []
+    seen_ids = set()
+    for d in domains:
+        subdomain_id = d.get("subdomain_id")
+        if subdomain_id and subdomain_id not in seen_ids:
+            seen_ids.add(subdomain_id)
+            records = list_all_dns_records(config, subdomain_id)
+            if records:
+                all_records.extend(records)
+
+    return {"records": all_records, "total": len(all_records)}
 
 
 @router.post("/register-subdomain")
