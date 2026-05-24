@@ -250,9 +250,6 @@ async function loadRecords() {
             else if (type === 'CNAME') typeColor = '#af52de';
 
             const recordId = r.record_id || '';
-            // 缓存表的 id 是自增的，dnshe 的数字 id 在原始 API 返回中
-            // 从缓存数据中取不到原始数字 id，所以删除用 record_id
-            const recordNumId = 0;
             const subdomain = name.includes('.') ? name.split('.')[0] : name;
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -264,10 +261,10 @@ async function loadRecords() {
                 <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
                 <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
                 <td style="text-align:right;white-space:nowrap;">
-                    ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', ${recordId}, '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
+                    ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
                     <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
-                    <button onclick="showEditRecordModal('${recordId}', ${recordNumId}, '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                    <button onclick="deleteRecord(${recordNumId}, '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+                    <button onclick="showEditRecordModal('${recordId}', '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+                    <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -402,24 +399,28 @@ async function enableDDNS(name, recordId, subdomain) {
         });
         const data = await resp.json();
         if (resp.ok) {
+            alert('✅ 已加入 DDNS 监控');
+            loadRecords();
+        } else if (resp.status === 400 && data.detail && data.detail.includes('已存在')) {
+            alert('⚠️ 该域名已在 DDNS 监控列表中，请刷新页面重试');
             loadRecords();
         } else {
-            alert('开启失败: ' + (data.detail || '未知错误'));
+            alert('❌ 开启失败: ' + (data.detail || '未知错误'));
         }
     } catch (e) {
-        alert('请求失败: ' + e.message);
+        alert('❌ 网络请求失败: ' + e.message);
     }
 }
 
 // ===== 编辑 DNS 记录（模态框） =====
 let editRecordId = 0;
-function showEditRecordModal(recordId, recordNumId, name, type, content, ttl) {
+function showEditRecordModal(recordId, name, type, content, ttl) {
     editRecordId = recordId;
     const isDDNS = !!ddnsMap[name];
     document.getElementById('modal-title').textContent = `编辑 ${name}`;
     document.getElementById('form-method').value = 'EDIT';
     document.getElementById('form-domain-id').value = recordId;
-    document.getElementById('form-domain-numid').value = recordNumId;
+    document.getElementById('form-domain-numid').value = 0;
     document.getElementById('form-record-name').value = name;
     document.getElementById('form-subdomain-id').value = '404037';
     document.getElementById('form-record-type').value = type;
@@ -567,9 +568,17 @@ async function deleteRecord(recordId, name) {
     try {
         const resp = await fetch(`/api/domains/dns-record/${recordId}`, { method: 'DELETE' });
         const data = await resp.json();
-        if (data.success) { alert('删除成功'); loadRecords(); }
-        else alert('删除失败: ' + (data.detail || '未知错误'));
-    } catch (e) { alert('请求失败: ' + e.message); }
+        if (data.success) {
+            if (data.warning) {
+                alert('⚠️ ' + data.message);
+            } else {
+                alert('✅ 删除成功');
+            }
+            loadRecords();
+        } else {
+            alert('❌ 删除失败: ' + (data.detail || '未知错误'));
+        }
+    } catch (e) { alert('❌ 请求失败: ' + e.message); }
 }
 
 // ===== 创建子域名 =====

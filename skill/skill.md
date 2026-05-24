@@ -13,14 +13,50 @@ v2.0 新增 FastAPI WebUI 管理界面，支持多域名管理、用户认证、
 - API 文档: `doc/api/README.md`
 
 ## Supervisor 进程
-- `ddns-ipv6`: 后台检测守护进程 (`ddns_daemon.py`)
-- `ddns-ipv6-webui`: Web 管理界面 (`app/webui.py`, 端口 5080)
+守护进程和 WebUI 合并为同一个进程（WebUI 在子线程中运行）：
+- `ddns-ipv6`: 后台检测守护进程 + WebUI 管理界面（`ddns_daemon.py`，端口 5080）
 
-## 部署命令
+### 配置文件
+- 项目内模板: [`ddns-ipv6.conf`](ddns-ipv6.conf)（单个 program）
+- 部署目标: `/main/server/supervisor/ddns-ipv6.conf`
+
+### 部署流程
+```bash
+# 1. 复制配置文件到 supervisor 目录
+sudo cp ddns-ipv6.conf /main/server/supervisor/
+
+# 2. 更新 supervisor 并启动
+sudo supervisorctl update
+
+# 3. 查看状态
+sudo supervisorctl status ddns-ipv6
+```
+
+### 常用命令
+```bash
+# 查看状态
+supervisorctl status ddns-ipv6
+
+# 重启
+supervisorctl restart ddns-ipv6
+
+# 查看日志
+tail -f /main/log/app/ddns-ipv6.log
+
+# 修改配置后重载
+supervisorctl update
+```
+
+### 一键部署脚本
 ```bash
 sudo bash deploy.sh
-supervisorctl status ddns-ipv6 ddns-ipv6-webui
 ```
+
+### 注意事项
+- 修改 supervisor 配置后必须执行 `supervisorctl update` 才能生效
+- 日志文件限制 1MB，自动轮转（保留 0 个备份）
+- WebUI 在守护进程的子线程中运行，进程退出时自动关闭
+- 如果 supervisor 未安装，先安装：`apt install supervisor`
 
 ## 依赖
 - 守护进程: Python 3.11+ 标准库

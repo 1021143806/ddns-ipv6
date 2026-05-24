@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""DDNS IPv6 后台守护进程
+"""DDNS IPv6 后台守护进程（含 WebUI）
 
 定时检测本机 IPv6 地址变化，通过 dnshe.com API 自动更新 AAAA 记录。
+同时内嵌 WebUI 管理界面（子线程运行 uvicorn），
 支持多域名配置，与 WebUI 共享配置文件和 SQLite 数据库。
 """
 
 import sys
 import time
 import os
+import threading
 
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -16,14 +18,36 @@ from app.core import load_config, check_and_update_domain, log
 from app.models import add_log, upsert_domain_status
 
 
+def start_webui(config: dict) -> None:
+    """在子线程中启动 WebUI"""
+    web_cfg = config.get("web", {})
+    host = web_cfg.get("host", "0.0.0.0")
+    port = web_cfg.get("port", 5080)
+
+    try:
+        import uvicorn
+        from app.webui import app
+        log(f"[INFO] WebUI 启动: http://{host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+    except ImportError:
+        log("[WARN] uvicorn 未安装，WebUI 不可用")
+    except Exception as e:
+        log(f"[ERROR] WebUI 启动失败: {e}")
+
+
 def main() -> None:
     """主循环"""
     log("=" * 50)
-    log("DDNS IPv6 守护进程启动")
+    log("DDNS IPv6 守护进程启动（含 WebUI）")
 
     config = load_config()
     daemon_cfg = config.get("daemon", {})
     domains = config.get("domains", [])
+
+    # 在子线程中启动 WebUI
+    webui_thread = threading.Thread(target=start_webui, args=(config,), daemon=True)
+    webui_thread.start()
+    log("[INFO] WebUI 子线程已启动")
 
     log(f"域名数量: {len(domains)}")
     log(f"全局检查间隔: {daemon_cfg.get('check_interval', 300)} 秒")

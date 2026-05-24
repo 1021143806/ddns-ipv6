@@ -283,6 +283,7 @@ def _init_dns_cache_table(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS dns_records_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             record_id TEXT NOT NULL,
+            dnshe_id INTEGER DEFAULT 0,
             name TEXT NOT NULL,
             type TEXT NOT NULL,
             content TEXT NOT NULL,
@@ -296,6 +297,11 @@ def _init_dns_cache_table(conn: sqlite3.Connection) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dns_cache_record_id
         ON dns_records_cache(record_id)
     """)
+    # 兼容旧表：如果 dnshe_id 列不存在则添加
+    try:
+        conn.execute("ALTER TABLE dns_records_cache ADD COLUMN dnshe_id INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # 列已存在
     conn.commit()
 
 
@@ -319,12 +325,15 @@ def update_dns_records_cache(records: list[dict], subdomain_id: int = 0) -> None
         record_id = r.get("record_id") or str(r.get("id", ""))
         if not record_id:
             continue
+        # dnshe API 返回的模块内部数字 id（用于 delete/update）
+        dnshe_id = r.get("id", 0)
         conn.execute("""
             INSERT INTO dns_records_cache
-            (record_id, name, type, content, ttl, status, subdomain_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (record_id, dnshe_id, name, type, content, ttl, status, subdomain_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             record_id,
+            dnshe_id,
             r.get("name", ""),
             r.get("type", ""),
             r.get("content", ""),

@@ -529,12 +529,30 @@ async def api_delete_dns_record(record_id: str, request: Request):
 
     success = delete_dns_record(config, record_id=record_id)
     if not success:
-        raise HTTPException(status_code=500, detail="删除 DNS 记录失败")
+        # 删除失败，检查是否是 404（dnshe 上已不存在）
+        # 自动清理本地缓存
+        from app.models import get_db
+        conn = get_db()
+        # 尝试用 record_id 或 dnshe_id 匹配
+        deleted = conn.execute(
+            "DELETE FROM dns_records_cache WHERE record_id = ? OR dnshe_id = ?",
+            (record_id, int(record_id) if record_id.isdigit() else -1),
+        ).rowcount
+        conn.commit()
+
+        if deleted > 0:
+            add_log(f"dns_{record_id}", "", "config_delete",
+                    message=f"DNS 记录在 dnshe 上已不存在，已清理本地缓存: id={record_id}")
+            return {"success": True, "warning": True,
+                    "message": "该记录在 dnshe 上已不存在，已自动从本地缓存中移除"}
+        else:
+            raise HTTPException(status_code=500, detail="删除 DNS 记录失败，请确认该记录在 dnshe 上是否存在")
 
     # 同步删除本地缓存
     from app.models import get_db
     conn = get_db()
-    conn.execute("DELETE FROM dns_records_cache WHERE record_id = ?", (record_id,))
+    conn.execute("DELETE FROM dns_records_cache WHERE record_id = ? OR dnshe_id = ?",
+                 (record_id, int(record_id) if record_id.isdigit() else -1))
     conn.commit()
 
     add_log(f"dns_{record_id}", "", "config_delete", message=f"删除 DNS 记录: id={record_id}")

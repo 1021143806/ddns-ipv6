@@ -314,12 +314,26 @@ def delete_dns_record(config: dict, record_id: str) -> bool:
 
     Args:
         config: 完整配置
-        record_id: 记录 ID（record_id 字符串，如 pdns_xxx）
+        record_id: 记录 ID（优先用 dnshe 的数字 id，其次用 record_id 字符串）
 
     Returns:
         成功返回 True，失败返回 False
     """
-    # 先尝试用 record_id 删除
+    # 先尝试用数字 id 删除（dnshe API 推荐方式）
+    if record_id.isdigit():
+        body = {"id": int(record_id)}
+        resp = api_request(
+            config,
+            endpoint="dns_records",
+            action="delete",
+            method="POST",
+            body=body,
+        )
+        if resp is not None:
+            log(f"[INFO] 删除 DNS 记录成功: id={record_id}")
+            return True
+
+    # 如果数字 id 方式失败，尝试用 record_id 字符串
     body = {"record_id": record_id}
     resp = api_request(
         config,
@@ -332,48 +346,8 @@ def delete_dns_record(config: dict, record_id: str) -> bool:
         log(f"[INFO] 删除 DNS 记录成功: {record_id}")
         return True
 
-    # 如果 record_id 方式失败，尝试用数字 id
-    # 先查询所有记录找到对应的数字 id
-    log(f"[INFO] record_id 方式删除失败，尝试查询数字 id")
-    list_resp = api_request(
-        config,
-        endpoint="dns_records",
-        action="list",
-        extra_params={"subdomain_id": 404037},
-    )
-    if list_resp:
-        records = list_resp.get("records", [])
-        for r in records:
-            if r.get("record_id") == record_id:
-                num_id = r.get("id")
-                if num_id:
-                    body2 = {"id": num_id}
-                    resp2 = api_request(
-                        config,
-                        endpoint="dns_records",
-                        action="delete",
-                        method="POST",
-                        body=body2,
-                    )
-                    if resp2 is not None:
-                        log(f"[INFO] 删除 DNS 记录成功: id={num_id}")
-                        return True
-                break
-
     log(f"[ERROR] 删除 DNS 记录失败: {record_id}")
     return False
-    resp = api_request(
-        config,
-        endpoint="dns_records",
-        action="delete",
-        method="POST",
-        body=body,
-    )
-    if resp is None:
-        log(f"[ERROR] 删除 DNS 记录失败: id={record_id}")
-        return False
-    log(f"[INFO] 删除 DNS 记录成功: id={record_id}")
-    return True
 
 
 def update_dns_record(config: dict, record_id: str, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
@@ -381,7 +355,7 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
 
     Args:
         config: 完整配置
-        record_id: 记录 ID
+        record_id: 记录 ID（优先用 dnshe 的数字 id，其次用 record_id 字符串）
         record_type: 记录类型 (A, AAAA, TXT...)
         name: 记录名称（子域名前缀）
         content: 记录值
@@ -390,6 +364,27 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
     Returns:
         成功返回 True，失败返回 False
     """
+    # 优先用数字 id（dnshe API 推荐方式）
+    if record_id.isdigit():
+        body = {
+            "id": int(record_id),
+            "type": record_type,
+            "name": name,
+            "content": content,
+            "ttl": ttl,
+        }
+        resp = api_request(
+            config,
+            endpoint="dns_records",
+            action="update",
+            method="POST",
+            body=body,
+        )
+        if resp is not None:
+            log(f"[INFO] 更新 DNS 记录成功: id={record_id}, {name} → {content}")
+            return True
+
+    # 用 record_id 字符串
     body = {
         "record_id": record_id,
         "type": record_type,
