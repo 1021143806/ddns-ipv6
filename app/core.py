@@ -134,6 +134,38 @@ def get_ipv6_address(interface: str = "") -> str | None:
         return None
 
 
+def get_ipv4_address() -> str | None:
+    """通过外部 HTTP 服务获取本机公网 IPv4 地址
+
+    依次尝试多个服务，提高成功率。
+
+    Returns:
+        IPv4 地址字符串，失败返回 None
+    """
+    services = [
+        "https://api.ip.sb/ip",
+        "https://ifconfig.me/ip",
+        "https://checkip.amazonaws.com/",
+        "https://icanhazip.com/",
+    ]
+
+    for service in services:
+        try:
+            req = urllib.request.Request(service)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                ip = resp.read().decode("utf-8").strip()
+                # 简单验证是否为 IPv4 地址
+                if ip and ":" not in ip and "." in ip:
+                    log(f"[INFO] 检测到 IPv4 地址: {ip} (来源: {service})")
+                    return ip
+        except Exception as e:
+            log(f"[WARN] 从 {service} 获取 IPv4 失败: {e}")
+            continue
+
+    log("[WARN] 所有服务均无法获取公网 IPv4 地址")
+    return None
+
+
 def api_request(
     config: dict,
     endpoint: str,
@@ -532,23 +564,29 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
     record_name = domain_cfg["record_name"]
     full_name = domain_cfg["record_name"]
     subdomain_prefix = get_record_name(domain_cfg)
+    record_type = domain_cfg.get("record_type", "AAAA")
 
-    # 1. 获取本机 IPv6
-    interface = config.get("network", {}).get("interface", "")
-    ipv6 = get_ipv6_address(interface)
-    if ipv6 is None:
+    # 1. 根据记录类型获取本机 IP
+    if record_type == "A":
+        current_ip = get_ipv4_address()
+        ip_type = "IPv4"
+    else:
+        interface = config.get("network", {}).get("interface", "")
+        current_ip = get_ipv6_address(interface)
+        ip_type = "IPv6"
+
+    if current_ip is None:
         return {
             "domain_id": domain_id,
             "record_name": record_name,
             "action": "error",
             "old_ip": None,
             "new_ip": None,
-            "message": "无法获取本机 IPv6 地址",
+            "message": f"无法获取本机 {ip_type} 地址",
         }
 
     # 2. 查询当前记录，同时检查脏数据
     subdomain_id = domain_cfg["subdomain_id"]
-    record_type = domain_cfg.get("record_type", "AAAA")
     resp = api_request(
         config,
         endpoint="dns_records",
@@ -561,7 +599,7 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
             "record_name": record_name,
             "action": "error",
             "old_ip": None,
-            "new_ip": ipv6,
+            "new_ip": current_ip,
             "message": "查询 DNS 记录失败",
         }
     records = resp.get("records", resp.get("data", resp)) if isinstance(resp, dict) else resp
@@ -571,7 +609,7 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
             "record_name": record_name,
             "action": "error",
             "old_ip": None,
-            "new_ip": ipv6,
+            "new_ip": current_ip,
             "message": "API 返回格式异常",
         }
 
@@ -598,33 +636,33 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
     # 4. 创建或更新
     if good_record is None:
         # 没有正确记录，创建新记录
-        resp = create_record(config, domain_cfg, ipv6)
+        resp = create_record(config, domain_cfg, current_ip)
         if resp is None:
             return {
                 "domain_id": domain_id,
                 "record_name": record_name,
                 "action": "error",
                 "old_ip": None,
-                "new_ip": ipv6,
-                "message": "创建 AAAA 记录失败",
+                "new_ip": current_ip,
+                "message": f"创建 {record_type} 记录失败",
             }
         return {
             "domain_id": domain_id,
             "record_name": record_name,
             "action": "create",
             "old_ip": None,
-            "new_ip": ipv6,
-            "message": f"创建成功: {ipv6}",
+            "new_ip": current_ip,
+            "message": f"创建成功: {current_ip}",
         }
     else:
         current_content = good_record.get("content", "")
-        if current_content == ipv6:
+        if current_content == current_ip:
             return {
                 "domain_id": domain_id,
                 "record_name": record_name,
                 "action": "skip",
                 "old_ip": current_content,
-                "new_ip": ipv6,
+                "new_ip": current_ip,
                 "message": "地址未变化，跳过更新",
             }
         record_id = good_record.get("id")
@@ -634,24 +672,24 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
                 "record_name": record_name,
                 "action": "error",
                 "old_ip": current_content,
-                "new_ip": ipv6,
+                "new_ip": current_ip,
                 "message": "记录 ID 缺失，无法更新",
             }
-        success = update_record(config, domain_cfg, record_id, ipv6)
+        success = update_record(config, domain_cfg, record_id, current_ip)
         if not success:
             return {
                 "domain_id": domain_id,
                 "record_name": record_name,
                 "action": "error",
                 "old_ip": current_content,
-                "new_ip": ipv6,
-                "message": "更新 AAAA 记录失败",
+                "new_ip": current_ip,
+                "message": f"更新 {record_type} 记录失败",
             }
         return {
             "domain_id": domain_id,
             "record_name": record_name,
             "action": "update",
             "old_ip": current_content,
-            "new_ip": ipv6,
-            "message": f"更新成功: {current_content} → {ipv6}",
+            "new_ip": current_ip,
+            "message": f"更新成功: {current_content} → {current_ip}",
         }
