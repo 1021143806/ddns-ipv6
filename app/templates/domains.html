@@ -197,7 +197,7 @@ async function refreshRecords() {
             alert('刷新失败: ' + (data.detail || '未知错误'));
         }
     } catch (e) {
-        alert('请求失败: ' + e.message);
+        showError('请求失败', e.message || '无法连接到服务器，请检查网络或刷新页面重试');
     }
     btn.disabled = false;
     btn.textContent = '🔄 刷新';
@@ -411,7 +411,23 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         closeModal();
         loadRecords();
     } catch (err) {
-        alert('请求失败: ' + err.message);
+        let msg = '网络请求失败，请检查网络连接';
+        if (err.message && err.message.includes('Failed to fetch')) {
+            msg = '无法连接到服务器，请检查网络或刷新页面重试';
+        } else if (err.message) {
+            msg = err.message;
+        }
+        showModal(`
+            <div class="mac-modal" style="max-width:420px;">
+                <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;margin-bottom:1rem;">❌ 请求失败</h2>
+                <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                    <p style="color:var(--text-primary);font-size:0.9rem;">${msg}</p>
+                </div>
+                <div style="display:flex;justify-content:flex-end;">
+                    <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
+                </div>
+            </div>
+        `);
     }
 });
 
@@ -426,7 +442,7 @@ async function checkDomain(domainId) {
             alert('检查失败');
         }
     } catch (e) {
-        alert('请求失败: ' + e.message);
+        showError('请求失败', e.message || '无法连接到服务器，请检查网络或刷新页面重试');
     }
 }
 
@@ -618,7 +634,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             closeModal();
             loadRecords();
         } catch (err) {
-            alert('请求失败: ' + err.message);
+            showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
         }
         return;
     }
@@ -673,7 +689,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         closeModal();
         loadRecords();
     } catch (err) {
-        alert('请求失败: ' + err.message);
+        showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
     }
 });
 
@@ -692,7 +708,7 @@ async function deleteRecord(recordId, name) {
         } else {
             alert('❌ 删除失败: ' + (data.detail || '未知错误'));
         }
-    } catch (e) { alert('❌ 请求失败: ' + e.message); }
+    } catch (e) { showError('请求失败', e.message || '无法连接到服务器，请检查网络或刷新页面重试'); }
 }
 
 // ===== 创建子域名 =====
@@ -833,6 +849,21 @@ function showModal(html) {
     overlay.innerHTML = html;
     overlay.onclick = function(e) { if (e.target === this) this.remove(); };
     document.body.appendChild(overlay);
+}
+
+// 友好错误提示
+function showError(title, msg) {
+    showModal(`
+        <div class="mac-modal" style="max-width:420px;">
+            <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;margin-bottom:1rem;">❌ ${title}</h2>
+            <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                <p style="color:var(--text-primary);font-size:0.9rem;">${msg}</p>
+            </div>
+            <div style="display:flex;justify-content:flex-end;">
+                <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
+            </div>
+        </div>
+    `);
 }
 </script>
 </script>

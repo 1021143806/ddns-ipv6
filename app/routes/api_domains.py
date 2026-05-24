@@ -478,7 +478,11 @@ async def api_create_dns_record(request: Request):
     )
 
     if resp is None:
-        raise HTTPException(status_code=500, detail="创建 DNS 记录失败")
+        from app.models import get_api_rate_status
+        rate = get_api_rate_status()
+        if rate.get("blocked"):
+            raise HTTPException(status_code=429, detail=f"dnshe API 速率限制已达上限（{rate['current']}/{rate['limit']}），请等待一小时后重试")
+        raise HTTPException(status_code=500, detail="创建 DNS 记录失败，请检查 dnshe API 是否可用")
 
     return {"success": True, "result": resp}
 
@@ -527,7 +531,11 @@ async def api_update_dns_record(record_id: str, request: Request):
 
     if not success:
         debug.append(f"[5] update_dns_record 返回失败")
-        raise HTTPException(status_code=500, detail="更新 DNS 记录失败")
+        from app.models import get_api_rate_status
+        rate = get_api_rate_status()
+        if rate.get("blocked"):
+            raise HTTPException(status_code=429, detail=f"dnshe API 速率限制已达上限（{rate['current']}/{rate['limit']}），请等待一小时后重试")
+        raise HTTPException(status_code=500, detail="更新 DNS 记录失败，请检查 dnshe API 是否可用")
 
     debug.append(f"[5] ✅ update_dns_record 成功")
     add_log(f"dns_{record_id}", body["name"], "config_update", message=f"更新 DNS 记录: {body['name']} → {body['content']}")
