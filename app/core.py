@@ -527,24 +527,11 @@ def register_subdomain(config: dict, subdomain: str, rootdomain: str) -> dict | 
 
 
 def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
-    """对单个域名执行完整的检测+更新流程
-
-    Args:
-        config: 完整配置
-        domain_cfg: 单域名配置
-
-    Returns:
-        {
-            "domain_id": str,
-            "record_name": str,
-            "action": "create"|"update"|"skip"|"error",
-            "old_ip": str|None,
-            "new_ip": str|None,
-            "message": str,
-        }
-    """
+    """对单个域名执行完整的检测+更新流程（自动清理脏数据）"""
     domain_id = domain_cfg.get("id", domain_cfg["record_name"])
     record_name = domain_cfg["record_name"]
+    full_name = domain_cfg["record_name"]
+    subdomain_prefix = get_record_name(domain_cfg)
 
     # 1. 获取本机 IPv6
     interface = config.get("network", {}).get("interface", "")
@@ -559,11 +546,58 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
             "message": "无法获取本机 IPv6 地址",
         }
 
-    # 2. 查询当前记录
-    record = get_current_record(config, domain_cfg)
+    # 2. 查询当前记录，同时检查脏数据
+    subdomain_id = domain_cfg["subdomain_id"]
+    record_type = domain_cfg.get("record_type", "AAAA")
+    resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="list",
+        extra_params={"subdomain_id": subdomain_id},
+    )
+    if resp is None:
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": None,
+            "new_ip": ipv6,
+            "message": "查询 DNS 记录失败",
+        }
+    records = resp.get("records", resp.get("data", resp)) if isinstance(resp, dict) else resp
+    if not isinstance(records, list):
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": None,
+            "new_ip": ipv6,
+            "message": "API 返回格式异常",
+        }
 
-    # 3. 创建或更新
-    if record is None:
+    # 查找正确 name 的记录和脏数据
+    good_record = None
+    dirty_records = []
+    for r in records:
+        r_name = r.get("name", "")
+        r_type = r.get("type", "")
+        if r_type != record_type:
+            continue
+        if r_name == full_name:
+            good_record = r
+        elif r_name == subdomain_prefix or r_name == f"{full_name}.{full_name.split('.', 1)[1]}":
+            dirty_records.append(r)
+
+    # 3. 处理脏数据：先删除所有脏记录
+    for dr in dirty_records:
+        dr_id = dr.get("id")
+        if dr_id:
+            log(f"[INFO] 清理脏数据: id={dr_id}, name={dr.get('name')}")
+            delete_dns_record(config, record_id=str(dr_id))
+
+    # 4. 创建或更新
+    if good_record is None:
+        # 没有正确记录，创建新记录
         resp = create_record(config, domain_cfg, ipv6)
         if resp is None:
             return {
@@ -583,7 +617,7 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
             "message": f"创建成功: {ipv6}",
         }
     else:
-        current_content = record.get("content", "")
+        current_content = good_record.get("content", "")
         if current_content == ipv6:
             return {
                 "domain_id": domain_id,
@@ -593,7 +627,7 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
                 "new_ip": ipv6,
                 "message": "地址未变化，跳过更新",
             }
-        record_id = record.get("id")
+        record_id = good_record.get("id")
         if record_id is None:
             return {
                 "domain_id": domain_id,
