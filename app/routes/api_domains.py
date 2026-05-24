@@ -469,6 +469,8 @@ async def api_create_dns_record(request: Request):
         "content": body["content"],
         "ttl": int(body.get("ttl", 600)),
     }
+    if "line" in body and body["line"]:
+        create_body["line"] = body["line"]
     resp = core_api_request(
         config,
         endpoint="dns_records",
@@ -503,6 +505,7 @@ async def api_update_dns_record(record_id: str, request: Request):
         name=body["name"],
         content=body["content"],
         ttl=int(body.get("ttl", 600)),
+        line=body.get("line", ""),
     )
 
     if not success:

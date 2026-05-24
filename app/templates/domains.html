@@ -86,10 +86,18 @@
                 <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">记录值 *</label>
                 <input type="text" id="form-record-value" class="mac-input" placeholder="240e:390:364:1771::137">
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
                 <div>
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">TTL (秒)</label>
                     <input type="number" id="form-ttl" class="mac-input" value="600">
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">解析线路</label>
+                    <select id="form-line" class="mac-input">
+                        <option value="">默认</option>
+                        <option value="us.ci">美国 us.ci</option>
+                        <option value="cn.mt">中国 cn.mt</option>
+                    </select>
                 </div>
                 <div>
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">DDNS 检查间隔</label>
@@ -481,6 +489,7 @@ function showAddModal() {
     document.getElementById('form-record-type').value = 'AAAA';
     document.getElementById('form-record-value').value = '';
     document.getElementById('form-ttl').value = '600';
+    document.getElementById('form-line').value = '';
     document.getElementById('form-check-interval').value = '';
     document.getElementById('form-enabled').checked = true;
     document.getElementById('domain-modal').classList.remove('hidden');
@@ -497,21 +506,24 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     const recordType = document.getElementById('form-record-type').value;
     const recordValue = document.getElementById('form-record-value').value.trim();
     const ttl = parseInt(document.getElementById('form-ttl').value);
+    const line = document.getElementById('form-line').value;
     const enabled = document.getElementById('form-enabled').checked;
     const checkInterval = document.getElementById('form-check-interval').value;
 
     // 通过后端 API 代理创建 DNS 记录（避免 CORS 问题）
     try {
+        const body = {
+            subdomain_id: subdomainId,
+            type: recordType,
+            name: recordName.split('.')[0],
+            content: recordValue,
+            ttl: ttl,
+        };
+        if (line) body.line = line;
         const resp = await fetch('/api/domains/dns-record/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                subdomain_id: subdomainId,
-                type: recordType,
-                name: recordName.split('.')[0],
-                content: recordValue,
-                ttl: ttl,
-            }),
+            body: JSON.stringify(body),
         });
         if (!resp.ok) {
             const errData = await resp.json().catch(() => ({}));
@@ -638,8 +650,9 @@ function showEditRecordModal(recordId, name, type, content, ttl) {
     document.getElementById('form-record-type').value = type;
     document.getElementById('form-record-value').value = content;
     document.getElementById('form-ttl').value = ttl;
+    document.getElementById('form-line').value = '';
     document.getElementById('form-check-interval').value = isDDNS ? (ddnsMap[name].check_interval || '') : '';
-    document.getElementById('form-enabled').checked = isDDNS || type === 'AAAA';
+    document.getElementById('form-enabled').checked = isDDNS;
     document.getElementById('domain-modal').classList.remove('hidden');
 }
 
@@ -658,15 +671,18 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         const recordType = document.getElementById('form-record-type').value;
         const recordValue = document.getElementById('form-record-value').value.trim();
         const ttl = parseInt(document.getElementById('form-ttl').value);
+        const line = document.getElementById('form-line').value;
         const enabled = document.getElementById('form-enabled').checked;
         const checkInterval = document.getElementById('form-check-interval').value;
 
         try {
             // 1. 更新 DNS 记录
+            const updateBody = { type: recordType, name: subdomain, content: recordValue, ttl: ttl };
+            if (line) updateBody.line = line;
             const resp = await fetch(`/api/domains/dns-record/${recordId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: recordType, name: subdomain, content: recordValue, ttl: ttl }),
+                body: JSON.stringify(updateBody),
             });
             const data = await resp.json();
             if (!resp.ok || !data.success) {

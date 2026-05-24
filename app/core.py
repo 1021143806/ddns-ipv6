@@ -369,7 +369,7 @@ def delete_dns_record(config: dict, record_id: str) -> bool:
     return False
 
 
-def update_dns_record(config: dict, record_id: str, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
+def update_dns_record(config: dict, record_id: str, record_type: str, name: str, content: str, ttl: int = 600, line: str = "") -> bool:
     """更新 DNS 记录（先比较新旧值，相同则跳过；不同则先删后建）
 
     dnshe API 的 update 接口存在已知问题（即使返回 success 也可能把 name 改坏），
@@ -382,6 +382,7 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
         name: 记录名称（子域名前缀）
         content: 记录值
         ttl: TTL
+        line: 解析线路
 
     Returns:
         成功返回 True，失败返回 False
@@ -440,6 +441,8 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
         "content": content,
         "ttl": ttl,
     }
+    if line:
+        body["line"] = line
     resp = api_request(
         config,
         endpoint="dns_records",
