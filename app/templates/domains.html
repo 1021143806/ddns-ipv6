@@ -17,7 +17,7 @@
 <div class="mac-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
         <h2 style="font-size:1rem;font-weight:600;color:var(--text-primary);">全部 DNS 记录 <span id="record-count" style="font-weight:400;color:var(--text-secondary);font-size:0.85rem;"></span></h2>
-        <button onclick="loadRecords()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
+        <button onclick="refreshRecords()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
     </div>
     <div id="records-loading" style="text-align:center;padding:2rem 0;color:var(--text-secondary);">加载中...</div>
     <div id="records-content" class="overflow-x-auto" style="display:none;">
@@ -182,7 +182,27 @@ async function loadNginxConfigs() {
     }
 }
 
-// ===== 加载全部 DNS 记录 =====
+// ===== 从 dnshe API 刷新缓存 =====
+async function refreshRecords() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '刷新中...';
+    try {
+        const resp = await fetch('/api/domains/dns-records/refresh', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+            loadRecords(); // 重新加载
+        } else {
+            alert('刷新失败: ' + (data.detail || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '🔄 刷新';
+}
+
+// ===== 加载全部 DNS 记录（从本地缓存） =====
 async function loadRecords() {
     const loading = document.getElementById('records-loading');
     const content = document.getElementById('records-content');
@@ -227,6 +247,8 @@ async function loadRecords() {
             else if (type === 'TXT') typeColor = '#ff9f0a';
             else if (type === 'CNAME') typeColor = '#af52de';
 
+            const recordId = r.id || r.record_id || 0;
+            const subdomain = name.includes('.') ? name.split('.')[0] : name;
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
@@ -238,9 +260,9 @@ async function loadRecords() {
                 <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
                 <td style="text-align:right;white-space:nowrap;">
                     ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : ''}
-                    <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">${hasNginx ? '编辑' : 'Nginx'}</button>
-                    <button onclick="alert('编辑功能开发中')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                    <button onclick="alert('删除功能开发中')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+                    <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">${hasNginx ? 'Nginx' : 'Nginx'}</button>
+                    <button onclick="showEditRecordModal(${recordId}, '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+                    <button onclick="deleteRecord(${recordId}, '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -346,6 +368,35 @@ async function checkDomain(domainId) {
     } catch (e) {
         alert('请求失败: ' + e.message);
     }
+}
+
+// ===== 编辑/删除 DNS 记录 =====
+function showEditRecordModal(recordId, name, type, content, ttl) {
+    const newContent = prompt(`编辑 ${name} (${type}) 的记录值:`, content);
+    if (newContent === null || newContent === content) return;
+    if (!newContent.trim()) { alert('记录值不能为空'); return; }
+
+    fetch(`/api/domains/dns-record/${recordId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: type, name: name, content: newContent.trim(), ttl: ttl }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) { alert('更新成功'); loadRecords(); }
+        else alert('更新失败: ' + (d.detail || '未知错误'));
+    })
+    .catch(e => alert('请求失败: ' + e.message));
+}
+
+async function deleteRecord(recordId, name) {
+    if (!confirm(`确定要删除 "${name}" 的 DNS 记录吗？此操作不可撤销！`)) return;
+    try {
+        const resp = await fetch(`/api/domains/dns-record/${recordId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.success) { alert('删除成功'); loadRecords(); }
+        else alert('删除失败: ' + (data.detail || '未知错误'));
+    } catch (e) { alert('请求失败: ' + e.message); }
 }
 
 // ===== 创建子域名 =====

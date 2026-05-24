@@ -155,13 +155,7 @@ def api_request(
     Returns:
         API 响应 JSON，失败返回 None
     """
-    # 速率限制检查：每小时最多 30 次
-    from app.models import get_hourly_api_count, record_api_call, API_HOURLY_LIMIT
-
-    current_count = get_hourly_api_count()
-    if current_count >= API_HOURLY_LIMIT:
-        log(f"[WARN] API 调用次数已达上限 ({API_HOURLY_LIMIT}次/小时)，跳过: {endpoint}/{action}")
-        return None
+    from app.models import record_api_call
 
     api_cfg = config["api"]
     base_url = api_cfg["base_url"]
@@ -312,6 +306,66 @@ def update_record(config: dict, domain_cfg: dict, record_id: int, ipv6: str) -> 
         return False
 
     log(f"[INFO] 更新 AAAA 记录成功: {ipv6}")
+    return True
+
+
+def delete_dns_record(config: dict, record_id: int) -> bool:
+    """删除 DNS 记录
+
+    Args:
+        config: 完整配置
+        record_id: 记录 ID
+
+    Returns:
+        成功返回 True，失败返回 False
+    """
+    body = {"id": record_id}
+    resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="delete",
+        method="POST",
+        body=body,
+    )
+    if resp is None:
+        log(f"[ERROR] 删除 DNS 记录失败: id={record_id}")
+        return False
+    log(f"[INFO] 删除 DNS 记录成功: id={record_id}")
+    return True
+
+
+def update_dns_record(config: dict, record_id: int, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
+    """更新 DNS 记录
+
+    Args:
+        config: 完整配置
+        record_id: 记录 ID
+        record_type: 记录类型 (A, AAAA, TXT...)
+        name: 记录名称（子域名前缀）
+        content: 记录值
+        ttl: TTL
+
+    Returns:
+        成功返回 True，失败返回 False
+    """
+    body = {
+        "id": record_id,
+        "type": record_type,
+        "name": name,
+        "content": content,
+        "ttl": ttl,
+    }
+    resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="update",
+        method="POST",
+        body=body,
+    )
+    if resp is None:
+        log(f"[ERROR] 更新 DNS 记录失败: id={record_id}")
+        return False
+    log(f"[INFO] 更新 DNS 记录成功: id={record_id}, {name} → {content}")
     return True
 
 

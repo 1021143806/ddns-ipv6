@@ -278,3 +278,70 @@ def get_api_rate_status() -> dict:
         "remaining": max(0, API_HOURLY_LIMIT - current),
         "blocked": current >= API_HOURLY_LIMIT,
     }
+
+
+# ============================================================
+# DNS 记录缓存（本地 SQLite，减少 dnshe API 调用）
+# ============================================================
+
+def _init_dns_cache_table(conn: sqlite3.Connection) -> None:
+    """初始化 DNS 记录缓存表"""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS dns_records_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            ttl INTEGER DEFAULT 600,
+            status TEXT DEFAULT 'active',
+            subdomain_id INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dns_cache_record_id
+        ON dns_records_cache(record_id)
+    """)
+    conn.commit()
+
+
+# 覆盖 _init_tables
+_orig_init2 = _init_tables
+def _init_tables(conn: sqlite3.Connection) -> None:
+    _orig_init2(conn)
+    _init_dns_cache_table(conn)
+
+
+def update_dns_records_cache(records: list[dict], subdomain_id: int = 0) -> None:
+    """更新 DNS 记录缓存"""
+    conn = get_db()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    for r in records:
+        record_id = r.get("record_id") or str(r.get("id", ""))
+        if not record_id:
+            continue
+        conn.execute("""
+            INSERT OR REPLACE INTO dns_records_cache
+            (record_id, name, type, content, ttl, status, subdomain_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            record_id,
+            r.get("name", ""),
+            r.get("type", ""),
+            r.get("content", ""),
+            r.get("ttl", 600),
+            r.get("status", "active"),
+            subdomain_id,
+            now,
+        ))
+    conn.commit()
+
+
+def get_cached_dns_records() -> list[dict]:
+    """从本地缓存获取 DNS 记录"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM dns_records_cache ORDER BY name ASC"
+    ).fetchall()
+    return [dict(r) for r in rows]

@@ -46,7 +46,7 @@
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:0.75rem;font-size:0.78rem;color:var(--text-secondary);">
         <span>最近 24 小时 API 调用</span>
-        <span>阈值: 30 次/小时</span>
+        <span>每半小时统计</span>
     </div>
 </div>
 
@@ -117,14 +117,10 @@ async function loadApiChart() {
 
         // 更新速率状态
         const badge = document.getElementById('api-rate-badge');
-        const pct = Math.round((current.current / current.limit) * 100);
-        const blocked = current.blocked;
         badge.innerHTML = `
-            <span style="font-size:0.85rem;font-weight:600;color:${blocked ? '#ff3b30' : (pct > 80 ? '#ff9f0a' : '#34c759')}">
-                ${current.current}/${current.limit}
+            <span style="font-size:0.85rem;font-weight:600;color:var(--text-secondary);">
+                当前: ${current.current} 次
             </span>
-            <span style="font-size:0.78rem;color:var(--text-secondary);">(${pct}%)</span>
-            ${blocked ? '<span class="mac-badge" style="background:rgba(255,59,48,0.15);color:#ff3b30;">已限流</span>' : ''}
         `;
 
         // 准备图表数据（半小时刻度）
@@ -134,7 +130,13 @@ async function loadApiChart() {
             return time.substring(0, 5);
         });
         const counts = stats.map(s => s.count);
-        const limitLine = stats.map(() => current.limit);
+
+        // 智能 Y 轴步长
+        const maxVal = Math.max(...counts, 1);
+        let stepSize = 1;
+        if (maxVal > 50) stepSize = 10;
+        else if (maxVal > 20) stepSize = 5;
+        else if (maxVal > 10) stepSize = 2;
 
         const ctx = document.getElementById('apiChart').getContext('2d');
 
@@ -153,26 +155,16 @@ async function loadApiChart() {
                     {
                         label: 'API 调用',
                         data: counts,
-                        borderColor: blocked ? '#ff3b30' : '#007aff',
-                        backgroundColor: blocked ? 'rgba(255,59,48,0.1)' : 'rgba(0,122,255,0.08)',
+                        borderColor: '#007aff',
+                        backgroundColor: 'rgba(0,122,255,0.08)',
                         borderWidth: 2.5,
                         pointRadius: 3,
-                        pointBackgroundColor: blocked ? '#ff3b30' : '#007aff',
+                        pointBackgroundColor: '#007aff',
                         pointBorderColor: isDark ? '#1c1c1e' : '#fff',
                         pointBorderWidth: 2,
                         fill: true,
                         tension: 0.35,
                     },
-                    {
-                        label: '限制阈值',
-                        data: limitLine,
-                        borderColor: '#ff3b30',
-                        borderWidth: 2,
-                        borderDash: [6, 4],
-                        pointRadius: 0,
-                        fill: false,
-                        tension: 0,
-                    }
                 ]
             },
             options: {
@@ -205,7 +197,7 @@ async function loadApiChart() {
                         ticks: {
                             color: textColor,
                             font: { size: 10, family: '-apple-system, sans-serif' },
-                            stepSize: 5,
+                            stepSize: stepSize,
                         }
                     }
                 }

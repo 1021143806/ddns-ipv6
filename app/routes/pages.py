@@ -211,3 +211,34 @@ async def dns_records_page(request: Request):
         "request": request,
         "user": ctx["user"],
     })
+
+
+@router.get("/api-docs")
+async def api_docs_page(request: Request):
+    """API 文档页面"""
+    ctx = _auth_context(request)
+    if not ctx["user"]:
+        return RedirectResponse("/login", status_code=302)
+
+    # 读取 API 文档 Markdown 文件
+    import markdown
+    docs_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "doc", "api", "README.md")
+    html_content = ""
+    if os.path.exists(docs_path):
+        try:
+            with open(docs_path, "r", encoding="utf-8") as f:
+                md_content = f.read()
+            html_content = markdown.markdown(
+                md_content,
+                extensions=["fenced_code", "codehilite", "tables"],
+            )
+        except Exception:
+            html_content = "<p>文档加载失败</p>"
+    else:
+        html_content = "<p>文档文件不存在</p>"
+
+    return templates.TemplateResponse(request, "api_docs.html", {
+        "request": request,
+        "user": ctx["user"],
+        "content": html_content,
+    })

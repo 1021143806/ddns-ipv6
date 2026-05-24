@@ -1,12 +1,14 @@
 """域名管理 REST API"""
 
 from fastapi import APIRouter, Request, HTTPException
-from app.core import load_config, save_config, check_and_update_domain, register_subdomain, list_all_dns_records
+from app.core import load_config, save_config, check_and_update_domain, register_subdomain, list_all_dns_records, update_dns_record, delete_dns_record
 from app.models import (
     add_log,
     upsert_domain_status,
     get_all_domain_status,
     delete_domain_status,
+    update_dns_records_cache,
+    get_cached_dns_records,
 )
 from app.auth import require_auth
 
@@ -55,7 +57,34 @@ async def list_domains(request: Request):
 
 @router.get("/dns-records")
 async def api_list_dns_records(request: Request):
-    """获取 dnshe 上所有 DNS 记录"""
+    """获取 DNS 记录（优先从本地缓存读取）"""
+    require_auth(request, _get_config(request))
+
+    # 从本地缓存读取
+    cached = get_cached_dns_records()
+    if cached:
+        return {"records": cached, "total": len(cached), "from_cache": True}
+
+    # 缓存为空时尝试从 dnshe API 拉取
+    config = _reload_config(request)
+    domains = config.get("domains", [])
+    all_records = []
+    seen_ids = set()
+    for d in domains:
+        subdomain_id = d.get("subdomain_id")
+        if subdomain_id and subdomain_id not in seen_ids:
+            seen_ids.add(subdomain_id)
+            records = list_all_dns_records(config, subdomain_id)
+            if records:
+                all_records.extend(records)
+                update_dns_records_cache(records, subdomain_id)
+
+    return {"records": all_records, "total": len(all_records), "from_cache": False}
+
+
+@router.post("/dns-records/refresh")
+async def api_refresh_dns_records(request: Request):
+    """从 dnshe API 刷新 DNS 记录缓存"""
     require_auth(request, _get_config(request))
     config = _reload_config(request)
     domains = config.get("domains", [])
@@ -69,8 +98,9 @@ async def api_list_dns_records(request: Request):
             records = list_all_dns_records(config, subdomain_id)
             if records:
                 all_records.extend(records)
+                update_dns_records_cache(records, subdomain_id)
 
-    return {"records": all_records, "total": len(all_records)}
+    return {"records": all_records, "total": len(all_records), "message": "缓存已更新"}
 
 
 @router.post("/register-subdomain")
@@ -416,3 +446,45 @@ async def generate_nginx_config(request: Request):
         "reload_success": reload_success,
         "message": f"Nginx 配置已写入 {config_path}，{'已自动重载生效' if reload_success else reload_msg}",
     }
+
+
+@router.put("/dns-record/{record_id}")
+async def api_update_dns_record(record_id: int, request: Request):
+    """更新 DNS 记录"""
+    require_auth(request, _get_config(request))
+    body = await request.json()
+
+    required = ["type", "name", "content"]
+    for field in required:
+        if field not in body:
+            raise HTTPException(status_code=400, detail=f"缺少必填字段: {field}")
+
+    config = _reload_config(request)
+    success = update_dns_record(
+        config,
+        record_id=record_id,
+        record_type=body["type"],
+        name=body["name"],
+        content=body["content"],
+        ttl=int(body.get("ttl", 600)),
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="更新 DNS 记录失败")
+
+    add_log(f"dns_{record_id}", body["name"], "config_update", message=f"更新 DNS 记录: {body['name']} → {body['content']}")
+    return {"success": True}
+
+
+@router.delete("/dns-record/{record_id}")
+async def api_delete_dns_record(record_id: int, request: Request):
+    """删除 DNS 记录"""
+    require_auth(request, _get_config(request))
+    config = _reload_config(request)
+
+    success = delete_dns_record(config, record_id=record_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除 DNS 记录失败")
+
+    add_log(f"dns_{record_id}", "", "config_delete", message=f"删除 DNS 记录: id={record_id}")
+    return {"success": True}

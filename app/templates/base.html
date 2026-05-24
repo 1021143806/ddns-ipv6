@@ -110,8 +110,17 @@
                     <a href="/domains" class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all" style="color:{% if request.url.path == '/domains' %}var(--apple-blue){% else %}var(--text-secondary){% endif %};{% if request.url.path == '/domains' %}background:rgba(0,113,227,0.08);{% endif %}" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='{% if request.url.path == '/domains' %}var(--apple-blue){% else %}var(--text-secondary){% endif %}'">域名管理</a>
                     <a href="/logs" class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all" style="color:{% if request.url.path == '/logs' %}var(--apple-blue){% else %}var(--text-secondary){% endif %};{% if request.url.path == '/logs' %}background:rgba(0,113,227,0.08);{% endif %}" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='{% if request.url.path == '/logs' %}var(--apple-blue){% else %}var(--text-secondary){% endif %}'">操作日志</a>
                     <a href="/dns-records" class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all" style="color:{% if request.url.path == '/dns-records' %}var(--apple-blue){% else %}var(--text-secondary){% endif %};{% if request.url.path == '/dns-records' %}background:rgba(0,113,227,0.08);{% endif %}" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='{% if request.url.path == '/dns-records' %}var(--apple-blue){% else %}var(--text-secondary){% endif %}'">DNS 记录</a>
+                    <a href="/api-docs" class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all" style="color:{% if request.url.path == '/api-docs' %}var(--apple-blue){% else %}var(--text-secondary){% endif %};{% if request.url.path == '/api-docs' %}background:rgba(0,113,227,0.08);{% endif %}" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='{% if request.url.path == '/api-docs' %}var(--apple-blue){% else %}var(--text-secondary){% endif %}'">API 文档</a>
                 </div>
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-2">
+                    <!-- 帮助按钮 -->
+                    <button onclick="toggleHelp()" class="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--input-bg)'" onmouseout="this.style.background='transparent'" title="帮助">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </button>
+                    <!-- GitHub 图标 -->
+                    <a href="https://github.com/1021143806/ddns-ipv6" target="_blank" rel="noopener" class="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--input-bg)'" onmouseout="this.style.background='transparent'" title="GitHub 仓库">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    </a>
                     <button onclick="toggleTheme()" class="w-8 h-8 flex items-center justify-center rounded-lg transition-all" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--input-bg)'" onmouseout="this.style.background='transparent'" title="切换暗黑模式">
                         <span id="theme-icon">🌙</span>
                     </button>
@@ -145,6 +154,56 @@
         const icon = document.getElementById('theme-icon');
         if (icon) icon.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
     });
+
+    // 帮助弹窗
+    function toggleHelp() {
+        const existing = document.getElementById('help-modal');
+        if (existing) { existing.remove(); return; }
+
+        const modal = document.createElement('div');
+        modal.id = 'help-modal';
+        modal.className = 'mac-modal-overlay';
+        modal.onclick = function(e) { if (e.target === this) this.remove(); };
+
+        const isDark = document.documentElement.classList.contains('dark');
+        modal.innerHTML = `
+            <div class="mac-modal" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);">📖 DDNS IPv6 帮助</h2>
+                    <button onclick="document.getElementById('help-modal').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
+                </div>
+                <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                    <h3 style="color:var(--text-primary);font-weight:600;margin-top:1rem;margin-bottom:0.3rem;">🌐 仪表盘</h3>
+                    <p>服务运行状态概览，域名状态列表，API 调用统计折线图。</p>
+
+                    <h3 style="color:var(--text-primary);font-weight:600;margin-top:1rem;margin-bottom:0.3rem;">📋 域名管理</h3>
+                    <p>展示 dnshe.com 上所有 DNS 记录，支持添加、编辑、删除记录。<br>
+                    DDNS 监控的域名会显示蓝色圆点，可手动触发检测更新。<br>
+                    每条记录可快速配置 Nginx 反向代理（自动生成配置并重载）。</p>
+
+                    <h3 style="color:var(--text-primary);font-weight:600;margin-top:1rem;margin-bottom:0.3rem;">📝 操作日志</h3>
+                    <p>DDNS 更新操作记录，可按域名筛选。</p>
+
+                    <h3 style="color:var(--text-primary);font-weight:600;margin-top:1rem;margin-bottom:0.3rem;">🔧 快速操作</h3>
+                    <p>• <b>创建子域名</b>：通过 dnshe API 直接注册新子域名<br>
+                    • <b>添加记录</b>：创建 DNS 记录，可选加入 DDNS 自动更新<br>
+                    • <b>Nginx</b>：一键生成反向代理配置并自动重载<br>
+                    • <b>检查</b>：手动触发 DDNS 检测更新</p>
+
+                    <h3 style="color:var(--text-primary);font-weight:600;margin-top:1rem;margin-bottom:0.3rem;">⚡ 快捷键</h3>
+                    <p>• 导航栏图标：🌙/☀️ 切换暗黑模式<br>
+                    • GitHub 图标：跳转到项目仓库</p>
+
+                    <h3 style="color:var(--text-primary);font-weight:600;margin-top:1rem;margin-bottom:0.3rem;">📡 API 文档</h3>
+                    <p>详见 <a href="/doc/api/README.md" class="mac-link" target="_blank">doc/api/README.md</a></p>
+
+                    <hr style="border:none;border-top:1px solid var(--card-border);margin:1rem 0;">
+                    <p style="font-size:0.8rem;">DDNS IPv6 v2.0 · <a href="https://github.com/a1021143806/ddns-ipv6" class="mac-link" target="_blank">GitHub</a></p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
     </script>
     {% block scripts %}{% endblock %}
 </body>
