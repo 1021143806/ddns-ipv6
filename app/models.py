@@ -205,13 +205,6 @@ def _init_api_call_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-# 覆盖 _init_tables 以包含新表
-_orig_init = _init_tables
-def _init_tables(conn: sqlite3.Connection) -> None:
-    _orig_init(conn)
-    _init_api_call_table(conn)
-
-
 def record_api_call(endpoint: str, action: str, success: bool = True) -> None:
     """记录一次 API 调用"""
     conn = get_db()
@@ -306,23 +299,28 @@ def _init_dns_cache_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-# 覆盖 _init_tables
-_orig_init2 = _init_tables
+# 合并所有表初始化
+_orig_init_final = _init_tables
 def _init_tables(conn: sqlite3.Connection) -> None:
-    _orig_init2(conn)
+    _orig_init_final(conn)
+    _init_api_call_table(conn)
     _init_dns_cache_table(conn)
 
 
 def update_dns_records_cache(records: list[dict], subdomain_id: int = 0) -> None:
-    """更新 DNS 记录缓存"""
+    """更新 DNS 记录缓存（先清空再写入，避免残留旧记录）"""
     conn = get_db()
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    # 先清空该子域名的所有缓存
+    conn.execute("DELETE FROM dns_records_cache WHERE subdomain_id = ?", (subdomain_id,))
+
     for r in records:
         record_id = r.get("record_id") or str(r.get("id", ""))
         if not record_id:
             continue
         conn.execute("""
-            INSERT OR REPLACE INTO dns_records_cache
+            INSERT INTO dns_records_cache
             (record_id, name, type, content, ttl, status, subdomain_id, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
