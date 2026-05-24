@@ -3,7 +3,7 @@
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 
 # 数据库文件路径
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,7 +67,7 @@ def add_log(
 ) -> int:
     """添加操作日志，返回日志 ID"""
     conn = get_db()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor = conn.execute(
         "INSERT INTO ddns_logs (domain_id, record_name, action, old_ip, new_ip, message, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -109,7 +109,7 @@ def get_logs(
 def get_today_update_count() -> int:
     """获取今日更新次数"""
     conn = get_db()
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")
     row = conn.execute(
         "SELECT COUNT(*) FROM ddns_logs WHERE action IN ('create', 'update') AND date(created_at) = ?",
         (today,),
@@ -130,7 +130,7 @@ def upsert_domain_status(
 ) -> None:
     """更新或插入域名状态"""
     conn = get_db()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     existing = conn.execute(
         "SELECT domain_id FROM domain_status WHERE domain_id = ?", (domain_id,)
     ).fetchone()
@@ -208,7 +208,7 @@ def _init_api_call_table(conn: sqlite3.Connection) -> None:
 def record_api_call(endpoint: str, action: str, success: bool = True) -> None:
     """记录一次 API 调用"""
     conn = get_db()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         "INSERT INTO api_call_log (endpoint, action, success, created_at) VALUES (?, ?, ?, ?)",
         (endpoint, action, 1 if success else 0, now),
@@ -219,7 +219,7 @@ def record_api_call(endpoint: str, action: str, success: bool = True) -> None:
 def get_hourly_api_count() -> int:
     """获取当前小时内的 API 调用次数"""
     conn = get_db()
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     hour_start = now.strftime("%Y-%m-%d %H:00:00")
     row = conn.execute(
         "SELECT COUNT(*) FROM api_call_log WHERE created_at >= ?",
@@ -237,7 +237,7 @@ def get_hourly_api_stats(hours: int = 24) -> list[dict]:
     """
     conn = get_db()
     from datetime import timedelta
-    start = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:00:00")
+    start = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:00:00")
     rows = conn.execute(
         """SELECT strftime('%Y-%m-%d %H:', created_at) ||
                   CASE
@@ -316,7 +316,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 def update_dns_records_cache(records: list[dict], subdomain_id: int = 0) -> None:
     """更新 DNS 记录缓存（先清空再写入，避免残留旧记录）"""
     conn = get_db()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # 先清空该子域名的所有缓存
     conn.execute("DELETE FROM dns_records_cache WHERE subdomain_id = ?", (subdomain_id,))

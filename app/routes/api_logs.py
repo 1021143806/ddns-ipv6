@@ -111,11 +111,11 @@ async def seed_test_data(request: Request):
     """生成测试数据（仅开发用）"""
     require_auth(request, request.app.state.config)
     from app.models import get_db
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     import random
 
     conn = get_db()
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     random.seed(42)
 
     # 清空旧数据

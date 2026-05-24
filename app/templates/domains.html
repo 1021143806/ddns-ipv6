@@ -454,7 +454,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             const resp = await fetch(`/api/domains/dns-record/${recordId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: recordType, name: subdomain, content: recordValue, ttl: ttl }),
+                body: JSON.stringify({ type: recordType, name: recordName, content: recordValue, ttl: ttl }),
             });
             const data = await resp.json();
             if (!data.success) {

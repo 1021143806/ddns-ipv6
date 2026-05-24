@@ -12,7 +12,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Python 3.11+ 使用 tomllib，低版本使用 tomli（需安装）
 try:
@@ -40,7 +40,7 @@ def load_config() -> dict:
 
 def log(msg: str) -> None:
     """输出带时间戳的日志到 stdout"""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now}] {msg}", flush=True)
 
 
