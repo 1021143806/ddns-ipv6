@@ -46,6 +46,7 @@
         <form id="domain-form" style="display:flex;flex-direction:column;gap:1rem;">
             <input type="hidden" id="form-method" value="POST">
             <input type="hidden" id="form-domain-id" value="">
+            <input type="hidden" id="form-domain-numid" value="0">
             <div>
                 <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">域名 *</label>
                 <input type="text" id="form-record-name" class="mac-input" placeholder="ddns.ptrel.cc.cd" required>
@@ -248,7 +249,10 @@ async function loadRecords() {
             else if (type === 'TXT') typeColor = '#ff9f0a';
             else if (type === 'CNAME') typeColor = '#af52de';
 
-            const recordId = r.record_id || r.id || 0;
+            const recordId = r.record_id || '';
+            // 缓存表的 id 是自增的，dnshe 的数字 id 在原始 API 返回中
+            // 从缓存数据中取不到原始数字 id，所以删除用 record_id
+            const recordNumId = 0;
             const subdomain = name.includes('.') ? name.split('.')[0] : name;
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -262,8 +266,8 @@ async function loadRecords() {
                 <td style="text-align:right;white-space:nowrap;">
                     ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', ${recordId}, '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
                     <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
-                    <button onclick="showEditRecordModal('${recordId}', '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                    <button onclick="deleteRecord('${recordId}', '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+                    <button onclick="showEditRecordModal('${recordId}', ${recordNumId}, '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+                    <button onclick="deleteRecord(${recordNumId}, '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -409,12 +413,13 @@ async function enableDDNS(name, recordId, subdomain) {
 
 // ===== 编辑 DNS 记录（模态框） =====
 let editRecordId = 0;
-function showEditRecordModal(recordId, name, type, content, ttl) {
+function showEditRecordModal(recordId, recordNumId, name, type, content, ttl) {
     editRecordId = recordId;
     const isDDNS = !!ddnsMap[name];
     document.getElementById('modal-title').textContent = `编辑 ${name}`;
     document.getElementById('form-method').value = 'EDIT';
     document.getElementById('form-domain-id').value = recordId;
+    document.getElementById('form-domain-numid').value = recordNumId;
     document.getElementById('form-record-name').value = name;
     document.getElementById('form-subdomain-id').value = '404037';
     document.getElementById('form-record-type').value = type;
@@ -434,6 +439,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     if (method === 'EDIT') {
         // 编辑模式：调用 dnshe API 更新
         const recordId = document.getElementById('form-domain-id').value;
+        const recordNumId = parseInt(document.getElementById('form-domain-numid').value);
         const recordName = document.getElementById('form-record-name').value.trim();
         const subdomain = recordName.includes('.') ? recordName.split('.')[0] : recordName;
         const recordType = document.getElementById('form-record-type').value;

@@ -314,12 +314,54 @@ def delete_dns_record(config: dict, record_id: str) -> bool:
 
     Args:
         config: 完整配置
-        record_id: 记录 ID（record_id 字符串）
+        record_id: 记录 ID（record_id 字符串，如 pdns_xxx）
 
     Returns:
         成功返回 True，失败返回 False
     """
+    # 先尝试用 record_id 删除
     body = {"record_id": record_id}
+    resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="delete",
+        method="POST",
+        body=body,
+    )
+    if resp is not None:
+        log(f"[INFO] 删除 DNS 记录成功: {record_id}")
+        return True
+
+    # 如果 record_id 方式失败，尝试用数字 id
+    # 先查询所有记录找到对应的数字 id
+    log(f"[INFO] record_id 方式删除失败，尝试查询数字 id")
+    list_resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="list",
+        extra_params={"subdomain_id": 404037},
+    )
+    if list_resp:
+        records = list_resp.get("records", [])
+        for r in records:
+            if r.get("record_id") == record_id:
+                num_id = r.get("id")
+                if num_id:
+                    body2 = {"id": num_id}
+                    resp2 = api_request(
+                        config,
+                        endpoint="dns_records",
+                        action="delete",
+                        method="POST",
+                        body=body2,
+                    )
+                    if resp2 is not None:
+                        log(f"[INFO] 删除 DNS 记录成功: id={num_id}")
+                        return True
+                break
+
+    log(f"[ERROR] 删除 DNS 记录失败: {record_id}")
+    return False
     resp = api_request(
         config,
         endpoint="dns_records",

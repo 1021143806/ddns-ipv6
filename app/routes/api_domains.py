@@ -483,8 +483,17 @@ async def api_update_dns_record(record_id: str, request: Request):
     domains = config.get("domains", [])
     subdomain_id = domains[0]["subdomain_id"] if domains else 404037
 
-    # 删除旧记录
-    del_ok = delete_dns_record(config, record_id=record_id)
+    # 先查询该记录的数字 id，用于 delete
+    records = list_all_dns_records(config, subdomain_id)
+    num_id = None
+    if records:
+        for r in records:
+            if r.get("record_id") == record_id:
+                num_id = r.get("id")
+                break
+
+    # 删除旧记录（用数字 id）
+    del_ok = delete_dns_record(config, record_id=str(num_id) if num_id else record_id)
     if not del_ok:
         raise HTTPException(status_code=500, detail="删除旧记录失败，无法修改类型")
 
@@ -521,6 +530,12 @@ async def api_delete_dns_record(record_id: str, request: Request):
     success = delete_dns_record(config, record_id=record_id)
     if not success:
         raise HTTPException(status_code=500, detail="删除 DNS 记录失败")
+
+    # 同步删除本地缓存
+    from app.models import get_db
+    conn = get_db()
+    conn.execute("DELETE FROM dns_records_cache WHERE record_id = ?", (record_id,))
+    conn.commit()
 
     add_log(f"dns_{record_id}", "", "config_delete", message=f"删除 DNS 记录: id={record_id}")
     return {"success": True}
