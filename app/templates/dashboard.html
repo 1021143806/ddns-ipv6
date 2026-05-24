@@ -33,6 +33,30 @@
     <a href="/domains" class="mac-btn mac-btn-secondary">管理域名</a>
 </div>
 
+<!-- 公网 IP 地址 -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6" id="public-ips-section">
+    <div class="mac-card">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+            <span class="mac-badge" style="background:rgba(0,122,255,0.12);color:#007aff;font-size:0.75rem;padding:0.15rem 0.5rem;">IPv4</span>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">公网地址</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span id="public-ipv4" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">检测中...</span>
+            <button onclick="copyIP('public-ipv4')" class="mac-link" style="font-size:0.78rem;text-decoration:none;" title="复制">📋</button>
+        </div>
+    </div>
+    <div class="mac-card">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+            <span class="mac-badge" style="background:rgba(52,199,89,0.12);color:#34c759;font-size:0.75rem;padding:0.15rem 0.5rem;">IPv6</span>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">公网地址</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span id="public-ipv6" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">检测中...</span>
+            <button onclick="copyIP('public-ipv6')" class="mac-link" style="font-size:0.78rem;text-decoration:none;" title="复制">📋</button>
+        </div>
+    </div>
+</div>
+
 <!-- API 调用统计 + 折线图 -->
 <div class="mac-card mb-6" id="api-stats-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
@@ -209,8 +233,54 @@ async function loadApiChart() {
     }
 }
 
-// 页面加载后加载图表
-document.addEventListener('DOMContentLoaded', loadApiChart);
+// 页面加载后加载图表和公网 IP
+document.addEventListener('DOMContentLoaded', function() {
+    loadApiChart();
+    loadPublicIPs();
+});
+
+// 加载公网 IP
+async function loadPublicIPs() {
+    try {
+        const resp = await fetch('/api/domains/network/public-ips');
+        const data = await resp.json();
+
+        const ipv4El = document.getElementById('public-ipv4');
+        const ipv6El = document.getElementById('public-ipv6');
+
+        if (data.ipv4) {
+            ipv4El.textContent = data.ipv4;
+            ipv4El.style.color = 'var(--text-primary)';
+        } else {
+            ipv4El.textContent = '未获取到';
+            ipv4El.style.color = 'var(--text-secondary)';
+        }
+
+        if (data.ipv6) {
+            ipv6El.textContent = data.ipv6;
+            ipv6El.style.color = 'var(--text-primary)';
+        } else {
+            ipv6El.textContent = '未获取到';
+            ipv6El.style.color = 'var(--text-secondary)';
+        }
+    } catch (e) {
+        document.getElementById('public-ipv4').textContent = '加载失败';
+        document.getElementById('public-ipv6').textContent = '加载失败';
+    }
+}
+
+// 复制 IP
+function copyIP(elementId) {
+    const text = document.getElementById(elementId).textContent;
+    if (text && text !== '检测中...' && text !== '未获取到' && text !== '加载失败') {
+        navigator.clipboard.writeText(text).then(() => {
+            const el = document.getElementById(elementId);
+            const orig = el.textContent;
+            el.textContent = '✅ 已复制';
+            setTimeout(() => { el.textContent = orig; }, 1500);
+        });
+    }
+}
 
 async function checkDomain(domainId) {
     const btn = event.target;

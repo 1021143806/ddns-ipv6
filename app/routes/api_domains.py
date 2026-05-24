@@ -558,3 +558,18 @@ async def api_delete_dns_record(record_id: str, request: Request):
 
     add_log(f"dns_{record_id}", "", "config_delete", message=f"删除 DNS 记录: id={record_id}")
     return {"success": True}
+
+
+@router.get("/network/public-ips")
+async def get_public_ips(request: Request):
+    """获取本机公网 IPv4 和 IPv6 地址"""
+    require_auth(request, _get_config(request))
+    config = _reload_config(request)
+
+    from app.core import get_ipv6_address, get_ipv4_address
+
+    interface = config.get("network", {}).get("interface", "")
+    ipv6 = get_ipv6_address(interface)
+    ipv4 = get_ipv4_address()
+
+    return {"ipv4": ipv4, "ipv6": ipv6}

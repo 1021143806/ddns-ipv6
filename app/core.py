@@ -143,10 +143,10 @@ def get_ipv4_address() -> str | None:
         IPv4 地址字符串，失败返回 None
     """
     services = [
-        "https://api.ip.sb/ip",
         "https://ifconfig.me/ip",
         "https://checkip.amazonaws.com/",
         "https://icanhazip.com/",
+        "https://api.ip.sb/ip",
     ]
 
     for service in services:
