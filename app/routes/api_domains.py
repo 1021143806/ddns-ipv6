@@ -448,6 +448,41 @@ async def generate_nginx_config(request: Request):
     }
 
 
+@router.post("/dns-record/create")
+async def api_create_dns_record(request: Request):
+    """通过后端代理创建 DNS 记录（避免前端 CORS 问题）"""
+    require_auth(request, _get_config(request))
+    body = await request.json()
+
+    required = ["subdomain_id", "type", "name", "content"]
+    for field in required:
+        if field not in body:
+            raise HTTPException(status_code=400, detail=f"缺少必填字段: {field}")
+
+    config = _reload_config(request)
+
+    from app.core import api_request as core_api_request
+    create_body = {
+        "subdomain_id": int(body["subdomain_id"]),
+        "type": body["type"],
+        "name": body["name"],
+        "content": body["content"],
+        "ttl": int(body.get("ttl", 600)),
+    }
+    resp = core_api_request(
+        config,
+        endpoint="dns_records",
+        action="create",
+        method="POST",
+        body=create_body,
+    )
+
+    if resp is None:
+        raise HTTPException(status_code=500, detail="创建 DNS 记录失败")
+
+    return {"success": True, "result": resp}
+
+
 @router.put("/dns-record/{record_id}")
 async def api_update_dns_record(record_id: str, request: Request):
     """更新 DNS 记录"""
@@ -461,6 +496,26 @@ async def api_update_dns_record(record_id: str, request: Request):
 
     config = _reload_config(request)
 
+    # 收集调试信息
+    debug = []
+    debug.append(f"[1] 收到更新请求: record_id={record_id}")
+    debug.append(f"[2] 请求体: type={body['type']}, name={body['name']}, content={body['content']}, ttl={body.get('ttl', 600)}")
+
+    # 查询当前 dnshe 上的记录
+    domains = config.get("domains", [])
+    subdomain_id = domains[0]["subdomain_id"] if domains else 404037
+    debug.append(f"[3] subdomain_id={subdomain_id}")
+
+    records = list_all_dns_records(config, subdomain_id)
+    if records:
+        debug.append(f"[4] dnshe 返回 {len(records)} 条记录")
+        for r in records:
+            r_name = r.get("name", "")
+            if body["name"] in r_name or body["name"].split(".")[0] in r_name:
+                debug.append(f"    → id={r.get('id')}, record_id={r.get('record_id')}, name={r_name}, type={r.get('type')}")
+    else:
+        debug.append(f"[4] dnshe 返回空")
+
     success = update_dns_record(
         config,
         record_id=record_id,
@@ -471,10 +526,12 @@ async def api_update_dns_record(record_id: str, request: Request):
     )
 
     if not success:
+        debug.append(f"[5] update_dns_record 返回失败")
         raise HTTPException(status_code=500, detail="更新 DNS 记录失败")
 
+    debug.append(f"[5] ✅ update_dns_record 成功")
     add_log(f"dns_{record_id}", body["name"], "config_update", message=f"更新 DNS 记录: {body['name']} → {body['content']}")
-    return {"success": True}
+    return {"success": True, "debug": debug}
 
 
 @router.delete("/dns-record/{record_id}")

@@ -228,3 +228,11 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 已添加 API 调用计数 + 速率限制保护（30次/小时）
   - 仪表盘添加 Chart.js 折线图展示 API 调用趋势
   - 超出限制时自动跳过，日志记录警告，不缓存积压
+- 2026-05-24: v2.0.1 修复多个问题
+  - 修复日志时间显示 UTC 而非北京时间的问题（app/core.py, app/models.py, ddns.py）
+  - 修复 dnshe API update 接口 name 参数导致的 Record conflict 错误
+  - 修复 maiapi 域名 record_name 配置为子域名前缀而非完整域名的问题
+  - 修复 update_dns_record 中非数字 record_id 无法正确查询数字 id 的问题
+  - 优化 doc/dnshe/api.md 文档，删除原始杂乱内容，补充实测发现的 API 问题
+  - 编辑 DNS 记录时添加详细调试信息显示
+  - 导航栏标题添加版本号 v2.0.1

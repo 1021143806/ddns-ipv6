@@ -20,18 +20,18 @@
         <button onclick="refreshRecords()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
     </div>
     <div id="records-loading" style="text-align:center;padding:2rem 0;color:var(--text-secondary);">加载中...</div>
-    <div id="records-content" class="overflow-x-auto" style="display:none;">
-        <table class="mac-table">
+    <div id="records-content" style="display:none;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table class="mac-table" style="min-width:760px;">
             <thead>
                 <tr>
-                    <th style="width:36px;">DDNS</th>
-                    <th>域名</th>
-                    <th style="width:70px;">类型</th>
-                    <th>记录值</th>
-                    <th style="width:60px;">TTL</th>
-                    <th style="width:80px;">状态</th>
-                    <th style="width:60px;">Nginx</th>
-                    <th style="text-align:right;">操作</th>
+                    <th style="width:32px;cursor:pointer;white-space:nowrap;" onclick="sortRecords('ddns')" title="点击排序">DDNS <span class="sort-icon" data-sort="ddns" style="font-size:0.7rem;">↕</span></th>
+                    <th style="cursor:pointer;white-space:nowrap;" onclick="sortRecords('name')" title="点击排序">域名 <span class="sort-icon" data-sort="name" style="font-size:0.7rem;">↕</span></th>
+                    <th style="width:50px;cursor:pointer;white-space:nowrap;" onclick="sortRecords('type')" title="点击排序">类型 <span class="sort-icon" data-sort="type" style="font-size:0.7rem;">↕</span></th>
+                    <th style="cursor:pointer;white-space:nowrap;" onclick="sortRecords('content')" title="点击排序">记录值 <span class="sort-icon" data-sort="content" style="font-size:0.7rem;">↕</span></th>
+                    <th style="width:40px;cursor:pointer;white-space:nowrap;" onclick="sortRecords('ttl')" title="点击排序">TTL <span class="sort-icon" data-sort="ttl" style="font-size:0.7rem;">↕</span></th>
+                    <th style="width:50px;cursor:pointer;white-space:nowrap;" onclick="sortRecords('status')" title="点击排序">状态 <span class="sort-icon" data-sort="status" style="font-size:0.7rem;">↕</span></th>
+                    <th style="width:45px;cursor:pointer;white-space:nowrap;" onclick="sortRecords('nginx')" title="点击排序">Nginx <span class="sort-icon" data-sort="nginx" style="font-size:0.7rem;">↕</span></th>
+                    <th style="text-align:right;white-space:nowrap;">操作</th>
                 </tr>
             </thead>
             <tbody id="records-tbody"></tbody>
@@ -203,6 +203,97 @@ async function refreshRecords() {
     btn.textContent = '🔄 刷新';
 }
 
+// ===== 排序状态 =====
+let sortState = { key: '', asc: true };
+let allRecords = [];
+
+function sortRecords(key) {
+    const icons = document.querySelectorAll('.sort-icon');
+    icons.forEach(icon => {
+        if (icon.dataset.sort === key) {
+            if (sortState.key === key) {
+                sortState.asc = !sortState.asc;
+            } else {
+                sortState.key = key;
+                sortState.asc = true;
+            }
+            icon.textContent = sortState.asc ? '↑' : '↓';
+        } else {
+            icon.textContent = '↕';
+        }
+    });
+    renderRecords();
+}
+
+function renderRecords() {
+    const tbody = document.getElementById('records-tbody');
+    const count = document.getElementById('record-count');
+    let records = [...allRecords];
+
+    if (sortState.key) {
+        records.sort((a, b) => {
+            let va, vb;
+            const key = sortState.key;
+            if (key === 'ttl') {
+                va = parseInt(a.ttl) || 0;
+                vb = parseInt(b.ttl) || 0;
+            } else if (key === 'ddns') {
+                va = ddnsMap[a.name] ? 1 : 0;
+                vb = ddnsMap[b.name] ? 1 : 0;
+            } else if (key === 'nginx') {
+                va = nginxMap[a.name] ? 1 : 0;
+                vb = nginxMap[b.name] ? 1 : 0;
+            } else {
+                va = String(a[key] ?? '').toLowerCase();
+                vb = String(b[key] ?? '').toLowerCase();
+            }
+            if (va < vb) return sortState.asc ? -1 : 1;
+            if (va > vb) return sortState.asc ? 1 : -1;
+            return 0;
+        });
+    }
+
+    count.textContent = `(共 ${records.length} 条)`;
+    tbody.innerHTML = '';
+
+    records.forEach(r => {
+        const name = r.name || '-';
+        const type = r.type || '-';
+        const value = r.content || '-';
+        const ttl = r.ttl || '-';
+        const status = r.status || 'active';
+        const isDDNS = !!ddnsMap[name];
+        const isAAAA = type === 'AAAA';
+        const hasNginx = !!nginxMap[name];
+
+        let typeColor = 'var(--text-secondary)';
+        if (type === 'A') typeColor = '#007aff';
+        else if (type === 'AAAA') typeColor = '#34c759';
+        else if (type === 'TXT') typeColor = '#ff9f0a';
+        else if (type === 'CNAME') typeColor = '#af52de';
+
+        const recordId = r.record_id || '';
+        const subdomain = name.includes('.') ? name.split('.')[0] : name;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+            <td><span style="font-weight:500;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span></td>
+            <td><span class="mac-badge" style="background:${typeColor}15;color:${typeColor};">${type}</span></td>
+            <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${value}">${value}</td>
+            <td style="color:var(--text-secondary);font-size:0.82rem;">${ttl}s</td>
+            <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
+            <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+            <td style="text-align:right;white-space:nowrap;">
+                ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
+                <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
+                <button onclick="showEditRecordModal('${recordId}', '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+                <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
 // ===== 加载全部 DNS 记录（从本地缓存） =====
 async function loadRecords() {
     const loading = document.getElementById('records-loading');
@@ -230,46 +321,8 @@ async function loadRecords() {
             });
         });
 
-        count.textContent = `(共 ${records.length} 条)`;
-        tbody.innerHTML = '';
-
-        records.forEach(r => {
-            const name = r.name || '-';
-            const type = r.type || '-';
-            const value = r.content || '-';
-            const ttl = r.ttl || '-';
-            const status = r.status || 'active';
-            const isDDNS = !!ddnsMap[name];
-            const isAAAA = type === 'AAAA';
-            const hasNginx = !!nginxMap[name];
-
-            let typeColor = 'var(--text-secondary)';
-            if (type === 'A') typeColor = '#007aff';
-            else if (type === 'AAAA') typeColor = '#34c759';
-            else if (type === 'TXT') typeColor = '#ff9f0a';
-            else if (type === 'CNAME') typeColor = '#af52de';
-
-            const recordId = r.record_id || '';
-            const subdomain = name.includes('.') ? name.split('.')[0] : name;
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
-                <td><span style="font-weight:500;">${name}</span></td>
-                <td><span class="mac-badge" style="background:${typeColor}15;color:${typeColor};">${type}</span></td>
-                <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);word-break:break-all;">${value}</td>
-                <td style="color:var(--text-secondary);font-size:0.82rem;">${ttl}s</td>
-                <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
-                <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
-                <td style="text-align:right;white-space:nowrap;">
-                    ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
-                    <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
-                    <button onclick="showEditRecordModal('${recordId}', '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                    <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-
+        allRecords = records;
+        renderRecords();
         loading.style.display = 'none';
         content.style.display = 'block';
     } catch (e) {
@@ -315,15 +368,11 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     const enabled = document.getElementById('form-enabled').checked;
     const checkInterval = document.getElementById('form-check-interval').value;
 
-    // 通过 dnshe API 直接创建 DNS 记录
+    // 通过后端 API 代理创建 DNS 记录（避免 CORS 问题）
     try {
-        const dnsheResp = await fetch('https://api005.dnshe.com/index.php?m=domain_hub&endpoint=dns_records&action=create', {
+        const resp = await fetch('/api/domains/dns-record/create', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': 'cfsd_75ae7c349f028271a38a016f09106494',
-                'X-API-Secret': '1755d4dbfc1f04adc8ccc6a072ce52fb482d540548f2d214825331f9a16bc6cc',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 subdomain_id: subdomainId,
                 type: recordType,
@@ -332,9 +381,9 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
                 ttl: ttl,
             }),
         });
-        const dnsheData = await dnsheResp.json();
-        if (!dnsheData.success) {
-            alert('DNS 记录创建失败: ' + (dnsheData.message || '未知错误'));
+        const data = await resp.json();
+        if (!data.success) {
+            alert('DNS 记录创建失败: ' + (data.detail || '未知错误'));
             return;
         }
 
@@ -454,13 +503,82 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             const resp = await fetch(`/api/domains/dns-record/${recordId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: recordType, name: recordName, content: recordValue, ttl: ttl }),
+                body: JSON.stringify({ type: recordType, name: subdomain, content: recordValue, ttl: ttl }),
             });
             const data = await resp.json();
             if (!data.success) {
-                alert('更新 DNS 记录失败: ' + (data.detail || '未知错误'));
+                // 显示详细错误信息弹窗
+                let errHtml = `
+                    <div class="mac-modal" style="max-width:560px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                            <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;">❌ 更新失败</h2>
+                            <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
+                        </div>
+                        <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                            <p style="color:#ff3b30;font-weight:600;font-size:0.9rem;">${data.detail || '未知错误'}</p>
+                        </div>
+                        <details style="margin-top:0.5rem;">
+                            <summary style="cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text-secondary);padding:0.5rem 0;">📋 查看调试信息</summary>
+                            <div style="background:var(--input-bg);border-radius:10px;padding:0.8rem;margin-top:0.3rem;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;overflow-x:auto;">
+                                <div style="color:var(--text-secondary);margin-bottom:0.5rem;font-weight:600;">请求参数</div>
+                                <div style="color:var(--text-primary);">recordId: ${recordId}</div>
+                                <div style="color:var(--text-primary);">name: ${subdomain}</div>
+                                <div style="color:var(--text-primary);">type: ${recordType}</div>
+                                <div style="color:var(--text-primary);">content: ${recordValue}</div>
+                                <div style="color:var(--text-primary);">ttl: ${ttl}</div>
+                                ${data.debug ? `
+                                <div style="color:var(--text-secondary);margin-top:0.8rem;margin-bottom:0.5rem;font-weight:600;">执行流程</div>
+                                ${data.debug.map(line => {
+                                    if (line.includes('❌')) return `<div style="color:#ff3b30;">${line}</div>`;
+                                    if (line.includes('✅')) return `<div style="color:#34c759;">${line}</div>`;
+                                    if (line.startsWith('    →')) return `<div style="color:var(--text-secondary);padding-left:1rem;">${line}</div>`;
+                                    return `<div style="color:var(--text-primary);">${line}</div>`;
+                                }).join('')}
+                                ` : ''}
+                            </div>
+                        </details>
+                        <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+                            <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">我知道了</button>
+                        </div>
+                    </div>
+                `;
+                showModal(errHtml);
                 return;
             }
+            // 显示成功弹窗
+            let successHtml = `
+                <div class="mac-modal" style="max-width:560px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                        <h2 style="font-size:1.1rem;font-weight:600;color:#34c759;">✅ 更新成功</h2>
+                        <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
+                    </div>
+                    <div style="background:rgba(52,199,89,0.08);border:1px solid rgba(52,199,89,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                        <p style="color:var(--text-primary);font-size:0.9rem;">DNS 记录 <b>${recordName}</b> 已更新</p>
+                        <div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;margin-top:0.8rem;font-size:0.85rem;">
+                            <span style="color:var(--text-secondary);">类型</span><span style="color:var(--text-primary);font-weight:500;">${recordType}</span>
+                            <span style="color:var(--text-secondary);">记录值</span><span style="color:var(--text-primary);font-family:'SF Mono',monospace;font-size:0.8rem;">${recordValue}</span>
+                            <span style="color:var(--text-secondary);">TTL</span><span style="color:var(--text-primary);">${ttl}s</span>
+                        </div>
+                    </div>
+                    ${data.debug ? `
+                    <details>
+                        <summary style="cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text-secondary);padding:0.5rem 0;">📋 查看执行流程</summary>
+                        <div style="background:var(--input-bg);border-radius:10px;padding:0.8rem;margin-top:0.3rem;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;overflow-x:auto;">
+                            ${data.debug.map(line => {
+                                if (line.includes('❌')) return `<div style="color:#ff3b30;">${line}</div>`;
+                                if (line.includes('✅')) return `<div style="color:#34c759;">${line}</div>`;
+                                if (line.startsWith('    →')) return `<div style="color:var(--text-secondary);padding-left:1rem;">${line}</div>`;
+                                return `<div style="color:var(--text-primary);">${line}</div>`;
+                            }).join('')}
+                        </div>
+                    </details>
+                    ` : ''}
+                    <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+                        <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
+                    </div>
+                </div>
+            `;
+            showModal(successHtml);
 
             // 2. 处理 DDNS 配置
             const isCurrentlyDDNS = !!ddnsMap[recordName];
@@ -515,13 +633,9 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     const checkInterval = document.getElementById('form-check-interval').value;
 
     try {
-        const dnsheResp = await fetch('https://api005.dnshe.com/index.php?m=domain_hub&endpoint=dns_records&action=create', {
+        const resp = await fetch('/api/domains/dns-record/create', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': 'cfsd_75ae7c349f028271a38a016f09106494',
-                'X-API-Secret': '1755d4dbfc1f04adc8ccc6a072ce52fb482d540548f2d214825331f9a16bc6cc',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 subdomain_id: subdomainId,
                 type: recordType,
@@ -530,9 +644,9 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
                 ttl: ttl,
             }),
         });
-        const dnsheData = await dnsheResp.json();
-        if (!dnsheData.success) {
-            alert('DNS 记录创建失败: ' + (dnsheData.message || '未知错误'));
+        const data = await resp.json();
+        if (!data.success) {
+            alert('DNS 记录创建失败: ' + (data.detail || '未知错误'));
             return;
         }
 
@@ -711,6 +825,15 @@ document.getElementById('nginx-modal').addEventListener('click', function(e) {
 
 // 页面加载时自动加载 DNS 记录
 document.addEventListener('DOMContentLoaded', loadRecords);
+
+// 通用弹窗函数
+function showModal(html) {
+    const overlay = document.createElement('div');
+    overlay.className = 'mac-modal-overlay';
+    overlay.innerHTML = html;
+    overlay.onclick = function(e) { if (e.target === this) this.remove(); };
+    document.body.appendChild(overlay);
+}
 </script>
 </script>
 {% endblock %}
