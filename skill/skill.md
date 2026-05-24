@@ -210,8 +210,9 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
 详见 [`doc/api/README.md`](doc/api/README.md)
 
 ## 速率限制
-- dnshe API 限制：**30 次/小时**
-- 超出限制时：跳过本次调用，等待下一轮（不缓存，避免积压）
+- dnshe API 限制：**60 次/分钟**（文档标注）
+- 软件预警阈值：**300 次/小时**（`app/models.py` 中 `API_HOURLY_LIMIT`）
+- 超出预警时：跳过本次调用，等待下一轮（不缓存，避免积压）
 - 每次 API 调用自动记录到 `api_call_log` 表
 - 仪表盘展示折线图 + 实时速率状态
 
@@ -236,3 +237,11 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 优化 doc/dnshe/api.md 文档，删除原始杂乱内容，补充实测发现的 API 问题
   - 编辑 DNS 记录时添加详细调试信息显示
   - 导航栏标题添加版本号 v2.0.1
+  - 修复前端直接调用 dnshe API 的 CORS 问题，改为后端代理
+  - 修复数据库文件权限导致的 readonly 错误
+  - 修复 update_dns_record 完全放弃 dnshe update 接口（有 bug），改为先删后建
+  - 域名管理表格添加列排序功能
+  - 所有错误提示改为友好模态框弹窗
+  - 添加网站 SVG 图标
+  - 添加 Cache-Control 禁用浏览器缓存
+  - 优化编辑响应速度，移除多余的 API 调用

@@ -184,7 +184,7 @@ def delete_domain_status(domain_id: str) -> None:
 # API 调用计数 + 速率限制
 # ============================================================
 
-API_HOURLY_LIMIT = 30  # dnshe API 每小时限制
+API_HOURLY_LIMIT = 300  # dnshe API 限制 60次/分钟，设 300次/小时作为软件预警
 
 
 def _init_api_call_table(conn: sqlite3.Connection) -> None:

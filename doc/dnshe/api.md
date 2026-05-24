@@ -399,12 +399,12 @@ curl -X POST "https://api005.dnshe.com/index.php?m=domain_hub&endpoint=dns_recor
 
 > ⚠️ **重要**：至少提供 `record_id` 或 `id` 其中之一。
 >
-> ⚠️ **已知 Bug**：`name` 参数行为异常，经实测：
-> - 传子域名前缀 → 成功，但 `record_id` 会变化
-> - 不传 name → name 会被重置为 `xxx.ptrel.cc.cd.ptrel.cc.cd.ptrel.cc.cd`（三重拼接！）
+> ⚠️ **已知 Bug（严重）**：此接口存在严重问题，建议完全弃用，改为 delete + create。
+> - 传子域名前缀 → 返回 success，但 name 可能被改坏（如 `maiapi` → `maiapi.ptrel.cc.cd.ptrel.cc.cd`）
+> - 不传 name → name 被多重拼接（三重、四重...）
 > - 传完整域名 → 返回 `Record conflict` 错误
 >
-> **推荐做法**：始终传子域名前缀作为 name，如果 update 失败则执行"先删后建"。
+> **推荐做法**：完全弃用此接口，改用 delete + create。
 
 **请求示例**:
 
@@ -645,19 +645,20 @@ dnshe API 的 `name` 参数行为存在严重问题，经实测验证：
 |------|-----------|------|
 | **create** | 子域名前缀（如 `testapi`） | ✅ name=`testapi.ptrel.cc.cd`，正确 |
 | **create** | 完整域名（如 `testapi.ptrel.cc.cd`） | ❌ 重复拼接，返回 `id=0, record_id=null` |
-| **update** | 子域名前缀（如 `testapi`） | ⚠️ 成功，但 `record_id` 会变化 |
-| **update** | 不传 name | ❌ 三重拼接！ |
+| **update** | 子域名前缀（如 `testapi`） | ⚠️ 返回 success，但 name 可能被改坏（如 `maiapi` → `maiapi.ptrel.cc.cd.ptrel.cc.cd`） |
+| **update** | 不传 name | ❌ 多重拼接（三重、四重...） |
 
 **结论**：
-- create 时必须传**子域名前缀**
-- update 时必须传**子域名前缀**，不能不传
-- update 失败时直接执行"先删后建"
+- **create** 时必须传**子域名前缀**
+- **update 接口有 bug，建议完全弃用**，改为"先删后建"（delete + create）
 
 ### 2. record_id 变化
 
-`record_id` 是基于 name/type 的哈希值，每次 update 都可能改变。**不要持久化存储 `record_id`**，推荐优先使用数字 `id`。
+`record_id` 是基于 name/type 的哈希值，每次 update 或 delete+create 都可能改变。**不要持久化存储 `record_id`**，推荐优先使用数字 `id`。
 
-### 3. 更新失败处理
+### 3. 更新策略
 
-1. 优先用数字 `id` 直接 update（传子域名前缀 name）
-2. 失败则执行"先删后建"：用数字 `id` 删除 → 用子域名前缀创建
+由于 update 接口存在 bug（即使返回 success 也可能把 name 改坏），推荐策略：
+1. 查询数字 `id`（通过 `list` 接口）
+2. 用数字 `id` 删除旧记录
+3. 用子域名前缀创建新记录

@@ -381,11 +381,22 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
                 ttl: ttl,
             }),
         });
-        const data = await resp.json();
-        if (!data.success) {
-            alert('DNS 记录创建失败: ' + (data.detail || '未知错误'));
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            showModal(`
+                <div class="mac-modal" style="max-width:480px;">
+                    <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;margin-bottom:1rem;">❌ 创建失败</h2>
+                    <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                        <p style="color:var(--text-primary);font-size:0.9rem;">${errData.detail || '未知错误（' + resp.status + '）'}</p>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;">
+                        <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
+                    </div>
+                </div>
+            `);
             return;
         }
+        const data = await resp.json();
 
         // 如果勾选了 DDNS，添加到监控
         if (enabled) {
@@ -522,79 +533,20 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
                 body: JSON.stringify({ type: recordType, name: subdomain, content: recordValue, ttl: ttl }),
             });
             const data = await resp.json();
-            if (!data.success) {
-                // 显示详细错误信息弹窗
-                let errHtml = `
-                    <div class="mac-modal" style="max-width:560px;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-                            <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;">❌ 更新失败</h2>
-                            <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
-                        </div>
+            if (!resp.ok || !data.success) {
+                showModal(`
+                    <div class="mac-modal" style="max-width:480px;">
+                        <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;margin-bottom:1rem;">❌ 更新失败</h2>
                         <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
-                            <p style="color:#ff3b30;font-weight:600;font-size:0.9rem;">${data.detail || '未知错误'}</p>
+                            <p style="color:var(--text-primary);font-size:0.9rem;">${data.detail || '未知错误（' + resp.status + '）'}</p>
                         </div>
-                        <details style="margin-top:0.5rem;">
-                            <summary style="cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text-secondary);padding:0.5rem 0;">📋 查看调试信息</summary>
-                            <div style="background:var(--input-bg);border-radius:10px;padding:0.8rem;margin-top:0.3rem;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;overflow-x:auto;">
-                                <div style="color:var(--text-secondary);margin-bottom:0.5rem;font-weight:600;">请求参数</div>
-                                <div style="color:var(--text-primary);">recordId: ${recordId}</div>
-                                <div style="color:var(--text-primary);">name: ${subdomain}</div>
-                                <div style="color:var(--text-primary);">type: ${recordType}</div>
-                                <div style="color:var(--text-primary);">content: ${recordValue}</div>
-                                <div style="color:var(--text-primary);">ttl: ${ttl}</div>
-                                ${data.debug ? `
-                                <div style="color:var(--text-secondary);margin-top:0.8rem;margin-bottom:0.5rem;font-weight:600;">执行流程</div>
-                                ${data.debug.map(line => {
-                                    if (line.includes('❌')) return `<div style="color:#ff3b30;">${line}</div>`;
-                                    if (line.includes('✅')) return `<div style="color:#34c759;">${line}</div>`;
-                                    if (line.startsWith('    →')) return `<div style="color:var(--text-secondary);padding-left:1rem;">${line}</div>`;
-                                    return `<div style="color:var(--text-primary);">${line}</div>`;
-                                }).join('')}
-                                ` : ''}
-                            </div>
-                        </details>
-                        <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
-                            <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">我知道了</button>
+                        <div style="display:flex;justify-content:flex-end;">
+                            <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
                         </div>
                     </div>
-                `;
-                showModal(errHtml);
+                `);
                 return;
             }
-            // 显示成功弹窗
-            let successHtml = `
-                <div class="mac-modal" style="max-width:560px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-                        <h2 style="font-size:1.1rem;font-weight:600;color:#34c759;">✅ 更新成功</h2>
-                        <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
-                    </div>
-                    <div style="background:rgba(52,199,89,0.08);border:1px solid rgba(52,199,89,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
-                        <p style="color:var(--text-primary);font-size:0.9rem;">DNS 记录 <b>${recordName}</b> 已更新</p>
-                        <div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;margin-top:0.8rem;font-size:0.85rem;">
-                            <span style="color:var(--text-secondary);">类型</span><span style="color:var(--text-primary);font-weight:500;">${recordType}</span>
-                            <span style="color:var(--text-secondary);">记录值</span><span style="color:var(--text-primary);font-family:'SF Mono',monospace;font-size:0.8rem;">${recordValue}</span>
-                            <span style="color:var(--text-secondary);">TTL</span><span style="color:var(--text-primary);">${ttl}s</span>
-                        </div>
-                    </div>
-                    ${data.debug ? `
-                    <details>
-                        <summary style="cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text-secondary);padding:0.5rem 0;">📋 查看执行流程</summary>
-                        <div style="background:var(--input-bg);border-radius:10px;padding:0.8rem;margin-top:0.3rem;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;overflow-x:auto;">
-                            ${data.debug.map(line => {
-                                if (line.includes('❌')) return `<div style="color:#ff3b30;">${line}</div>`;
-                                if (line.includes('✅')) return `<div style="color:#34c759;">${line}</div>`;
-                                if (line.startsWith('    →')) return `<div style="color:var(--text-secondary);padding-left:1rem;">${line}</div>`;
-                                return `<div style="color:var(--text-primary);">${line}</div>`;
-                            }).join('')}
-                        </div>
-                    </details>
-                    ` : ''}
-                    <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
-                        <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
-                    </div>
-                </div>
-            `;
-            showModal(successHtml);
 
             // 2. 处理 DDNS 配置
             const isCurrentlyDDNS = !!ddnsMap[recordName];
@@ -660,11 +612,22 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
                 ttl: ttl,
             }),
         });
-        const data = await resp.json();
-        if (!data.success) {
-            alert('DNS 记录创建失败: ' + (data.detail || '未知错误'));
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            showModal(`
+                <div class="mac-modal" style="max-width:480px;">
+                    <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;margin-bottom:1rem;">❌ 创建失败</h2>
+                    <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
+                        <p style="color:var(--text-primary);font-size:0.9rem;">${errData.detail || '未知错误（' + resp.status + '）'}</p>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;">
+                        <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
+                    </div>
+                </div>
+            `);
             return;
         }
+        const data = await resp.json();
 
         if (enabled) {
             const ddnsResp = await fetch('/api/domains', {
