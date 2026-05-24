@@ -75,7 +75,7 @@
                 </div>
                 <div>
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">DDNS 检查间隔</label>
-                    <input type="number" id="form-check-interval" class="mac-input" placeholder="不启用 DDNS">
+                    <input type="number" id="form-check-interval" class="mac-input" placeholder="使用全局设置（300秒）">
                 </div>
             </div>
             <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;color:var(--text-primary);cursor:pointer;">
@@ -248,7 +248,7 @@ async function loadRecords() {
             else if (type === 'TXT') typeColor = '#ff9f0a';
             else if (type === 'CNAME') typeColor = '#af52de';
 
-            const recordId = r.id || r.record_id || 0;
+            const recordId = r.record_id || r.id || 0;
             const subdomain = name.includes('.') ? name.split('.')[0] : name;
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -262,8 +262,8 @@ async function loadRecords() {
                 <td style="text-align:right;white-space:nowrap;">
                     ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', ${recordId}, '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
                     <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
-                    <button onclick="showEditRecordModal(${recordId}, '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                    <button onclick="deleteRecord(${recordId}, '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+                    <button onclick="showEditRecordModal('${recordId}', '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+                    <button onclick="deleteRecord('${recordId}', '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -288,7 +288,7 @@ function onRecordTypeChange() {
 // ===== 模态框 =====
 function showAddModal() {
     document.getElementById('modal-title').textContent = '添加 DNS 记录';
-    document.getElementById('form-method').value = 'POST';
+    document.getElementById('form-method').value = 'ADD';
     document.getElementById('form-domain-id').value = '';
     document.getElementById('form-record-name').value = '';
     document.getElementById('form-subdomain-id').value = '404037';
@@ -407,24 +407,154 @@ async function enableDDNS(name, recordId, subdomain) {
     }
 }
 
-// ===== 编辑/删除 DNS 记录 =====
+// ===== 编辑 DNS 记录（模态框） =====
+let editRecordId = 0;
 function showEditRecordModal(recordId, name, type, content, ttl) {
-    const newContent = prompt(`编辑 ${name} (${type}) 的记录值:`, content);
-    if (newContent === null || newContent === content) return;
-    if (!newContent.trim()) { alert('记录值不能为空'); return; }
-
-    fetch(`/api/domains/dns-record/${recordId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: type, name: name, content: newContent.trim(), ttl: ttl }),
-    })
-    .then(r => r.json())
-    .then(d => {
-        if (d.success) { alert('更新成功'); loadRecords(); }
-        else alert('更新失败: ' + (d.detail || '未知错误'));
-    })
-    .catch(e => alert('请求失败: ' + e.message));
+    editRecordId = recordId;
+    const isDDNS = !!ddnsMap[name];
+    document.getElementById('modal-title').textContent = `编辑 ${name}`;
+    document.getElementById('form-method').value = 'EDIT';
+    document.getElementById('form-domain-id').value = recordId;
+    document.getElementById('form-record-name').value = name;
+    document.getElementById('form-subdomain-id').value = '404037';
+    document.getElementById('form-record-type').value = type;
+    document.getElementById('form-record-value').value = content;
+    document.getElementById('form-ttl').value = ttl;
+    document.getElementById('form-check-interval').value = isDDNS ? (ddnsMap[name].check_interval || '') : '';
+    document.getElementById('form-enabled').checked = isDDNS || type === 'AAAA';
+    document.getElementById('domain-modal').classList.remove('hidden');
 }
+
+// 修改表单提交逻辑
+const origSubmit = document.getElementById('domain-form').submit;
+document.getElementById('domain-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const method = document.getElementById('form-method').value;
+
+    if (method === 'EDIT') {
+        // 编辑模式：调用 dnshe API 更新
+        const recordId = document.getElementById('form-domain-id').value;
+        const recordName = document.getElementById('form-record-name').value.trim();
+        const subdomain = recordName.includes('.') ? recordName.split('.')[0] : recordName;
+        const recordType = document.getElementById('form-record-type').value;
+        const recordValue = document.getElementById('form-record-value').value.trim();
+        const ttl = parseInt(document.getElementById('form-ttl').value);
+        const enabled = document.getElementById('form-enabled').checked;
+        const checkInterval = document.getElementById('form-check-interval').value;
+
+        try {
+            // 1. 更新 DNS 记录
+            const resp = await fetch(`/api/domains/dns-record/${recordId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: recordType, name: subdomain, content: recordValue, ttl: ttl }),
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                alert('更新 DNS 记录失败: ' + (data.detail || '未知错误'));
+                return;
+            }
+
+            // 2. 处理 DDNS 配置
+            const isCurrentlyDDNS = !!ddnsMap[recordName];
+            if (enabled && !isCurrentlyDDNS) {
+                // 开启 DDNS
+                await fetch('/api/domains', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: subdomain,
+                        record_name: recordName,
+                        subdomain_id: 404037,
+                        record_type: recordType,
+                        ttl: ttl,
+                        enabled: true,
+                        check_interval: checkInterval ? parseInt(checkInterval) : undefined,
+                    }),
+                });
+            } else if (enabled && isCurrentlyDDNS) {
+                // 更新 DDNS 配置
+                await fetch(`/api/domains/${subdomain}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ttl: ttl,
+                        enabled: true,
+                        check_interval: checkInterval ? parseInt(checkInterval) : null,
+                    }),
+                });
+            } else if (!enabled && isCurrentlyDDNS) {
+                // 关闭 DDNS
+                await fetch(`/api/domains/${subdomain}`, {
+                    method: 'DELETE',
+                });
+            }
+
+            closeModal();
+            loadRecords();
+        } catch (err) {
+            alert('请求失败: ' + err.message);
+        }
+        return;
+    }
+
+    // 添加模式
+    const recordName = document.getElementById('form-record-name').value.trim();
+    const subdomainId = parseInt(document.getElementById('form-subdomain-id').value);
+    const recordType = document.getElementById('form-record-type').value;
+    const recordValue = document.getElementById('form-record-value').value.trim();
+    const ttl = parseInt(document.getElementById('form-ttl').value);
+    const enabled = document.getElementById('form-enabled').checked;
+    const checkInterval = document.getElementById('form-check-interval').value;
+
+    try {
+        const dnsheResp = await fetch('https://api005.dnshe.com/index.php?m=domain_hub&endpoint=dns_records&action=create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'cfsd_75ae7c349f028271a38a016f09106494',
+                'X-API-Secret': '1755d4dbfc1f04adc8ccc6a072ce52fb482d540548f2d214825331f9a16bc6cc',
+            },
+            body: JSON.stringify({
+                subdomain_id: subdomainId,
+                type: recordType,
+                name: recordName.split('.')[0],
+                content: recordValue,
+                ttl: ttl,
+            }),
+        });
+        const dnsheData = await dnsheResp.json();
+        if (!dnsheData.success) {
+            alert('DNS 记录创建失败: ' + (dnsheData.message || '未知错误'));
+            return;
+        }
+
+        if (enabled) {
+            const ddnsResp = await fetch('/api/domains', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: recordName.split('.')[0],
+                    record_name: recordName,
+                    subdomain_id: subdomainId,
+                    record_type: recordType,
+                    ttl: ttl,
+                    enabled: true,
+                    check_interval: checkInterval ? parseInt(checkInterval) : undefined,
+                }),
+            });
+            if (!ddnsResp.ok) {
+                const ddnsErr = await ddnsResp.json();
+                alert('DNS 记录已创建，但加入 DDNS 监控失败: ' + (ddnsErr.detail || '未知错误'));
+            }
+        }
+
+        closeModal();
+        loadRecords();
+    } catch (err) {
+        alert('请求失败: ' + err.message);
+    }
+});
 
 async function deleteRecord(recordId, name) {
     if (!confirm(`确定要删除 "${name}" 的 DNS 记录吗？此操作不可撤销！`)) return;

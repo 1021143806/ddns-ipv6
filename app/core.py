@@ -309,17 +309,17 @@ def update_record(config: dict, domain_cfg: dict, record_id: int, ipv6: str) -> 
     return True
 
 
-def delete_dns_record(config: dict, record_id: int) -> bool:
+def delete_dns_record(config: dict, record_id: str) -> bool:
     """删除 DNS 记录
 
     Args:
         config: 完整配置
-        record_id: 记录 ID
+        record_id: 记录 ID（record_id 字符串）
 
     Returns:
         成功返回 True，失败返回 False
     """
-    body = {"id": record_id}
+    body = {"record_id": record_id}
     resp = api_request(
         config,
         endpoint="dns_records",
@@ -334,7 +334,7 @@ def delete_dns_record(config: dict, record_id: int) -> bool:
     return True
 
 
-def update_dns_record(config: dict, record_id: int, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
+def update_dns_record(config: dict, record_id: str, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
     """更新 DNS 记录
 
     Args:
@@ -349,7 +349,7 @@ def update_dns_record(config: dict, record_id: int, record_type: str, name: str,
         成功返回 True，失败返回 False
     """
     body = {
-        "id": record_id,
+        "record_id": record_id,
         "type": record_type,
         "name": name,
         "content": content,
