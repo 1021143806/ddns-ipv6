@@ -30,6 +30,7 @@
                     <th>记录值</th>
                     <th style="width:60px;">TTL</th>
                     <th style="width:80px;">状态</th>
+                    <th style="width:60px;">Nginx</th>
                     <th style="text-align:right;">操作</th>
                 </tr>
             </thead>
@@ -89,6 +90,38 @@
     </div>
 </div>
 
+<!-- Nginx 配置模态框 -->
+<div id="nginx-modal" class="mac-modal-overlay hidden">
+    <div class="mac-modal" style="max-width:560px;">
+        <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:0.5rem;">🚀 Nginx 反向代理</h2>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem;">快速生成并部署 Nginx 配置</p>
+        <form id="nginx-form" style="display:flex;flex-direction:column;gap:1rem;">
+            <div>
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">域名 *</label>
+                <input type="text" id="nginx-domain" class="mac-input" placeholder="app.ptrel.cc.cd" required>
+            </div>
+            <div>
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">反向代理目标 *</label>
+                <input type="text" id="nginx-proxy-pass" class="mac-input" placeholder="http://127.0.0.1:3000" required>
+            </div>
+            <div id="nginx-result" class="hidden">
+                <div style="background:rgba(52,199,89,0.12);border:1px solid rgba(52,199,89,0.3);color:#34c759;padding:0.75rem 1rem;border-radius:var(--radius-md);font-size:0.85rem;">
+                    <p id="nginx-result-msg"></p>
+                </div>
+            </div>
+            <div id="nginx-error" class="hidden">
+                <div style="background:rgba(255,59,48,0.12);border:1px solid rgba(255,59,48,0.3);color:#ff3b30;padding:0.75rem 1rem;border-radius:var(--radius-md);font-size:0.85rem;">
+                    <p id="nginx-error-msg"></p>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:0.6rem;">
+                <button type="button" onclick="closeNginxModal()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;">取消</button>
+                <button type="submit" class="mac-btn" id="nginx-submit-btn" style="font-size:0.85rem;">生成配置</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- 创建子域名模态框 -->
 <div id="register-modal" class="mac-modal-overlay hidden">
     <div class="mac-modal">
@@ -130,6 +163,25 @@ const ddnsDomains = {{ domains | tojson }};
 const ddnsMap = {};
 ddnsDomains.forEach(d => { ddnsMap[d.record_name] = d; });
 
+// Nginx 配置映射
+let nginxMap = {};
+
+// ===== 加载 Nginx 配置列表 =====
+async function loadNginxConfigs() {
+    try {
+        const resp = await fetch('/api/domains/nginx-configs');
+        const data = await resp.json();
+        nginxMap = {};
+        (data.configs || []).forEach(c => {
+            (c.server_names || []).forEach(name => {
+                nginxMap[name] = c;
+            });
+        });
+    } catch (e) {
+        console.log('加载 Nginx 配置失败:', e);
+    }
+}
+
 // ===== 加载全部 DNS 记录 =====
 async function loadRecords() {
     const loading = document.getElementById('records-loading');
@@ -141,9 +193,21 @@ async function loadRecords() {
     content.style.display = 'none';
 
     try {
-        const resp = await fetch('/api/domains/dns-records');
-        const data = await resp.json();
-        const records = data.records || [];
+        const [recordsResp, nginxResp] = await Promise.all([
+            fetch('/api/domains/dns-records'),
+            fetch('/api/domains/nginx-configs'),
+        ]);
+        const recordsData = await recordsResp.json();
+        const nginxData = await nginxResp.json();
+        const records = recordsData.records || [];
+
+        // 构建 Nginx 映射
+        nginxMap = {};
+        (nginxData.configs || []).forEach(c => {
+            (c.server_names || []).forEach(name => {
+                nginxMap[name] = c;
+            });
+        });
 
         count.textContent = `(共 ${records.length} 条)`;
         tbody.innerHTML = '';
@@ -155,6 +219,7 @@ async function loadRecords() {
             const ttl = r.ttl || '-';
             const status = r.status || 'active';
             const isDDNS = !!ddnsMap[name];
+            const hasNginx = !!nginxMap[name];
 
             let typeColor = 'var(--text-secondary)';
             if (type === 'A') typeColor = '#007aff';
@@ -170,8 +235,10 @@ async function loadRecords() {
                 <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);word-break:break-all;">${value}</td>
                 <td style="color:var(--text-secondary);font-size:0.82rem;">${ttl}s</td>
                 <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
+                <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
                 <td style="text-align:right;white-space:nowrap;">
                     ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : ''}
+                    <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">${hasNginx ? '编辑' : 'Nginx'}</button>
                     <button onclick="alert('编辑功能开发中')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
                     <button onclick="alert('删除功能开发中')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
                 </td>
@@ -337,12 +404,76 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     }
 });
 
+// ===== Nginx 配置 =====
+function showNginxModal(domain) {
+    document.getElementById('nginx-domain').value = domain || '';
+    // 如果已有配置，读取 proxy_pass
+    const existing = nginxMap[domain];
+    document.getElementById('nginx-proxy-pass').value = existing && existing.proxy_passes.length > 0
+        ? existing.proxy_passes[0] : '';
+    document.getElementById('nginx-result').classList.add('hidden');
+    document.getElementById('nginx-error').classList.add('hidden');
+    document.getElementById('nginx-submit-btn').disabled = false;
+    document.getElementById('nginx-submit-btn').textContent = existing ? '更新配置' : '生成配置';
+    document.getElementById('nginx-modal').classList.remove('hidden');
+}
+
+function closeNginxModal() {
+    document.getElementById('nginx-modal').classList.add('hidden');
+}
+
+document.getElementById('nginx-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('nginx-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    document.getElementById('nginx-result').classList.add('hidden');
+    document.getElementById('nginx-error').classList.add('hidden');
+
+    const body = {
+        domain: document.getElementById('nginx-domain').value.trim(),
+        proxy_pass: document.getElementById('nginx-proxy-pass').value.trim(),
+    };
+
+    try {
+        const resp = await fetch('/api/domains/nginx-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById('nginx-result-msg').innerHTML =
+                `✅ 配置已写入 <code>${data.config_path}</code><br>` +
+                `请执行: <code>sudo nginx -s reload</code><br><br>` +
+                `<details><summary>查看配置内容</summary><pre style="font-size:0.75rem;margin-top:0.5rem;overflow:auto;">${data.config.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></details>`;
+            document.getElementById('nginx-result').classList.remove('hidden');
+            btn.textContent = '✅ 已生成';
+        } else {
+            document.getElementById('nginx-error-msg').innerHTML =
+                `❌ ${data.detail || '生成失败'}<br><br>` +
+                `<details><summary>查看配置内容</summary><pre style="font-size:0.75rem;margin-top:0.5rem;overflow:auto;">${(data.config || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></details>`;
+            document.getElementById('nginx-error').classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = '重试';
+        }
+    } catch (err) {
+        document.getElementById('nginx-error-msg').textContent = '请求失败: ' + err.message;
+        document.getElementById('nginx-error').classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = '重试';
+    }
+});
+
 // 点击遮罩关闭
 document.getElementById('domain-modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
 });
 document.getElementById('register-modal').addEventListener('click', function(e) {
     if (e.target === this) closeRegisterModal();
+});
+document.getElementById('nginx-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeNginxModal();
 });
 
 // 页面加载时自动加载 DNS 记录
