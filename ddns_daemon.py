@@ -19,7 +19,9 @@ from app.models import add_log, upsert_domain_status
 
 
 def start_webui(config: dict) -> None:
-    """在子线程中启动 WebUI"""
+    """在子线程中启动 WebUI（同时监听 IPv4 和 IPv6）"""
+    import socket
+
     web_cfg = config.get("web", {})
     host = web_cfg.get("host", "0.0.0.0")
     port = web_cfg.get("port", 5080)
@@ -27,8 +29,22 @@ def start_webui(config: dict) -> None:
     try:
         import uvicorn
         from app.webui import app
-        log(f"[INFO] WebUI 启动: http://{host}:{port}")
-        uvicorn.run(app, host=host, port=port, log_level="warning")
+
+        # 创建 IPv6 socket（IPV6_V6ONLY=0 同时处理 IPv4 映射连接）
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        sock.bind(("::", port))
+        sock.listen(2048)
+
+        log(f"[INFO] WebUI 启动: http://[::]:{port} (IPv4+IPv6)")
+
+        # 使用 uvicorn.Server 方式传入自定义 socket
+        from uvicorn.config import Config
+        from uvicorn.server import Server
+        cfg = Config(app=app, log_level="warning")
+        server = Server(cfg)
+        server.run(sockets=[sock])
     except ImportError:
         log("[WARN] uvicorn 未安装，WebUI 不可用")
     except Exception as e:
