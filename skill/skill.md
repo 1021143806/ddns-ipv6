@@ -161,6 +161,51 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains \
   }'
 ```
 
+## 日志查看
+
+### 方式一：WebUI 页面
+访问 `/logs` 页面，切换到 **⚙️ 守护进程日志** Tab：
+- 支持选择行数（50/100/200/500）
+- 支持关键词筛选（如输入 `error` 只看错误日志）
+- 支持手动刷新
+
+### 方式二：API 接口
+```bash
+# 先登录
+curl -c /tmp/cookies.txt -X POST http://localhost:5080/login \
+  -d "username=admin&password=admin123"
+
+# 读取最新 100 行
+curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=100&tail=true"
+
+# 按关键词筛选（如 error）
+curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=200&tail=true&keyword=error"
+
+# 读取开头 50 行
+curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=50"
+```
+
+### 方式三：服务器直接查看
+```bash
+# 实时跟踪最新日志
+tail -f /main/log/app/ddns-ipv6.log
+
+# 查看最近 100 行
+tail -100 /main/log/app/ddns-ipv6.log
+
+# 只看错误
+grep "ERROR" /main/log/app/ddns-ipv6.log
+
+# 按时间范围查看（如 5 月 24 日）
+grep "2026-05-24" /main/log/app/ddns-ipv6.log
+```
+
+### 日志文件说明
+| 文件 | 说明 |
+|------|------|
+| `/main/log/app/ddns-ipv6.log` | 守护进程日志（含 WebUI 启动信息） |
+| `data/ddns.db` 的 `ddns_logs` 表 | WebUI 操作日志（通过 API 查询） |
+
 ## API 文档
 详见 [`doc/api/README.md`](doc/api/README.md)
 

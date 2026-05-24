@@ -1,6 +1,7 @@
 """操作日志 REST API"""
 
-from fastapi import APIRouter, Request, Query
+import os
+from fastapi import APIRouter, Request, Query, HTTPException
 from app.models import (
     get_logs, get_today_update_count, get_all_domain_status,
     get_hourly_api_stats, get_api_rate_status,
@@ -8,6 +9,9 @@ from app.models import (
 from app.auth import require_auth
 
 router = APIRouter(prefix="/api", tags=["logs"])
+
+# 守护进程日志文件路径
+DAEMON_LOG_PATH = "/main/log/app/ddns-ipv6.log"
 
 
 @router.get("/logs")
@@ -20,6 +24,49 @@ async def list_logs(
     """查询操作日志（分页）"""
     require_auth(request, request.app.state.config)
     return get_logs(domain_id=domain_id, limit=limit, offset=offset)
+
+
+@router.get("/logs/daemon")
+async def get_daemon_logs(
+    request: Request,
+    lines: int = Query(100, ge=1, le=5000, description="返回行数"),
+    keyword: str | None = Query(None, description="关键词筛选"),
+    tail: bool = Query(False, description="是否只返回末尾行（最新日志）"),
+):
+    """读取守护进程日志文件（/main/log/app/ddns-ipv6.log）"""
+    require_auth(request, request.app.state.config)
+
+    if not os.path.exists(DAEMON_LOG_PATH):
+        raise HTTPException(status_code=404, detail="守护进程日志文件不存在")
+
+    try:
+        with open(DAEMON_LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取日志文件失败: {e}")
+
+    total = len(all_lines)
+
+    if tail:
+        # 取末尾 N 行
+        selected = all_lines[-lines:]
+    else:
+        # 取开头 N 行
+        selected = all_lines[:lines]
+
+    # 关键词筛选
+    if keyword:
+        selected = [l for l in selected if keyword in l]
+
+    return {
+        "lines": selected,
+        "total": total,
+        "returned": len(selected),
+        "lines_requested": lines,
+        "file": DAEMON_LOG_PATH,
+        "tail": tail,
+        "keyword": keyword,
+    }
 
 
 @router.get("/status")

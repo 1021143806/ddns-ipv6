@@ -3,77 +3,130 @@
 {% block content %}
 
 <div class="mb-6">
-    <h1 style="font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">操作日志</h1>
-    <p style="color:var(--text-secondary);margin-top:0.2rem;font-size:0.9rem;">DDNS 更新操作记录</p>
+    <h1 style="font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">日志</h1>
+    <p style="color:var(--text-secondary);margin-top:0.2rem;font-size:0.9rem;">DDNS 操作记录 · 守护进程运行日志</p>
 </div>
 
-<!-- 筛选 -->
-<div class="mac-card" style="padding:1rem 1.5rem;margin-bottom:1rem;">
-    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-        <label style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);">按域名筛选:</label>
-        <select id="filter-domain" class="mac-input" style="width:auto;min-width:160px;padding:0.4rem 0.7rem;font-size:0.85rem;" onchange="filterLogs()">
-            <option value="">全部域名</option>
-            {% for d in domains %}
-            <option value="{{ d.get('id', d.record_name) }}">{{ d.record_name }}</option>
-            {% endfor %}
-        </select>
-        <span style="font-size:0.82rem;color:var(--text-secondary);">共 {{ total }} 条记录</span>
-    </div>
+<!-- Tab 切换 -->
+<div style="display:flex;gap:0;margin-bottom:1rem;border-bottom:2px solid var(--card-border);">
+    <button id="tab-operation" class="log-tab active" onclick="switchTab('operation')">📋 操作日志</button>
+    <button id="tab-daemon" class="log-tab" onclick="switchTab('daemon')">⚙️ 守护进程日志</button>
 </div>
 
-<!-- 日志列表 -->
-<div class="mac-card">
-    {% if logs %}
-    <div class="overflow-x-auto">
-        <table class="mac-table">
-            <thead>
-                <tr>
-                    <th style="width:150px;">时间</th>
-                    <th>域名</th>
-                    <th>操作</th>
-                    <th>旧 IP</th>
-                    <th>新 IP</th>
-                    <th>消息</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td style="color:var(--text-secondary);font-size:0.82rem;white-space:nowrap;">{{ log.created_at }}</td>
-                    <td><span style="font-weight:500;">{{ log.record_name }}</span></td>
-                    <td>
-                        {% if log.action == 'create' %}
-                        <span class="mac-badge" style="background:rgba(52,199,89,0.15);color:#34c759;">创建</span>
-                        {% elif log.action == 'update' %}
-                        <span class="mac-badge" style="background:rgba(0,122,255,0.15);color:#007aff;">更新</span>
-                        {% elif log.action == 'skip' %}
-                        <span class="mac-badge" style="background:rgba(142,142,147,0.15);color:#8e8e93;">跳过</span>
-                        {% elif log.action == 'error' %}
-                        <span class="mac-badge" style="background:rgba(255,59,48,0.15);color:#ff3b30;">错误</span>
-                        {% elif log.action == 'config_add' %}
-                        <span class="mac-badge" style="background:rgba(175,82,222,0.15);color:#af52de;">添加配置</span>
-                        {% elif log.action == 'config_update' %}
-                        <span class="mac-badge" style="background:rgba(88,86,214,0.15);color:#5856d6;">更新配置</span>
-                        {% elif log.action == 'config_delete' %}
-                        <span class="mac-badge" style="background:rgba(255,149,0,0.15);color:#ff9500;">删除配置</span>
-                        {% else %}
-                        <span class="mac-badge" style="background:rgba(142,142,147,0.15);color:#8e8e93;">{{ log.action }}</span>
-                        {% endif %}
-                    </td>
-                    <td style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-secondary);">{{ log.old_ip or '-' }}</td>
-                    <td style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-primary);">{{ log.new_ip or '-' }}</td>
-                    <td style="color:var(--text-secondary);font-size:0.85rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.message }}</td>
-                </tr>
+<!-- 操作日志 -->
+<div id="panel-operation">
+    <!-- 筛选 -->
+    <div class="mac-card" style="padding:1rem 1.5rem;margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <label style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);">按域名筛选:</label>
+            <select id="filter-domain" class="mac-input" style="width:auto;min-width:160px;padding:0.4rem 0.7rem;font-size:0.85rem;" onchange="filterLogs()">
+                <option value="">全部域名</option>
+                {% for d in domains %}
+                <option value="{{ d.get('id', d.record_name) }}">{{ d.record_name }}</option>
                 {% endfor %}
-            </tbody>
-        </table>
+            </select>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">共 {{ total }} 条记录</span>
+        </div>
     </div>
-    {% else %}
-    <div style="text-align:center;padding:2rem 0;color:var(--text-secondary);">
-        <p>暂无操作日志</p>
+
+    <!-- 日志列表 -->
+    <div class="mac-card">
+        {% if logs %}
+        <div class="overflow-x-auto">
+            <table class="mac-table">
+                <thead>
+                    <tr>
+                        <th style="width:150px;">时间</th>
+                        <th>域名</th>
+                        <th>操作</th>
+                        <th>旧 IP</th>
+                        <th>新 IP</th>
+                        <th>消息</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td style="color:var(--text-secondary);font-size:0.82rem;white-space:nowrap;">{{ log.created_at }}</td>
+                        <td><span style="font-weight:500;">{{ log.record_name }}</span></td>
+                        <td>
+                            {% if log.action == 'create' %}
+                            <span class="mac-badge" style="background:rgba(52,199,89,0.15);color:#34c759;">创建</span>
+                            {% elif log.action == 'update' %}
+                            <span class="mac-badge" style="background:rgba(0,122,255,0.15);color:#007aff;">更新</span>
+                            {% elif log.action == 'skip' %}
+                            <span class="mac-badge" style="background:rgba(142,142,147,0.15);color:#8e8e93;">跳过</span>
+                            {% elif log.action == 'error' %}
+                            <span class="mac-badge" style="background:rgba(255,59,48,0.15);color:#ff3b30;">错误</span>
+                            {% elif log.action == 'config_add' %}
+                            <span class="mac-badge" style="background:rgba(175,82,222,0.15);color:#af52de;">添加配置</span>
+                            {% elif log.action == 'config_update' %}
+                            <span class="mac-badge" style="background:rgba(88,86,214,0.15);color:#5856d6;">更新配置</span>
+                            {% elif log.action == 'config_delete' %}
+                            <span class="mac-badge" style="background:rgba(255,149,0,0.15);color:#ff9500;">删除配置</span>
+                            {% else %}
+                            <span class="mac-badge" style="background:rgba(142,142,147,0.15);color:#8e8e93;">{{ log.action }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-secondary);">{{ log.old_ip or '-' }}</td>
+                        <td style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-primary);">{{ log.new_ip or '-' }}</td>
+                        <td style="color:var(--text-secondary);font-size:0.85rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.message }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:2rem 0;color:var(--text-secondary);">
+            <p>暂无操作日志</p>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
+
+<!-- 守护进程日志 -->
+<div id="panel-daemon" style="display:none;">
+    <div class="mac-card" style="padding:1rem 1.5rem;margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <label style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);">行数:</label>
+            <select id="daemon-lines" class="mac-input" style="width:auto;min-width:80px;padding:0.4rem 0.7rem;font-size:0.85rem;">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+            </select>
+            <label style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);">关键词:</label>
+            <input type="text" id="daemon-keyword" class="mac-input" style="width:auto;min-width:120px;padding:0.4rem 0.7rem;font-size:0.85rem;" placeholder="error">
+            <button onclick="loadDaemonLogs()" class="mac-btn" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔍 查询</button>
+            <button onclick="loadDaemonLogs(true)" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
+            <span id="daemon-log-info" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+        </div>
+    </div>
+    <div class="mac-card" style="padding:0;">
+        <div id="daemon-loading" style="text-align:center;padding:2rem 0;color:var(--text-secondary);">加载中...</div>
+        <pre id="daemon-log-content" style="display:none;margin:0;padding:1rem;font-family:'SF Mono',monospace;font-size:0.78rem;line-height:1.5;color:var(--text-primary);overflow-x:auto;max-height:70vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+    </div>
+</div>
+
+<style>
+.log-tab {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+.log-tab:hover { color: var(--text-primary); }
+.log-tab.active {
+    color: var(--apple-blue);
+    border-bottom-color: var(--apple-blue);
+}
+</style>
 
 {% endblock %}
 
@@ -85,6 +138,43 @@ function filterLogs() {
         window.location.href = `/logs?domain_id=${domainId}`;
     } else {
         window.location.href = '/logs';
+    }
+}
+
+function switchTab(tab) {
+    document.getElementById('tab-operation').classList.toggle('active', tab === 'operation');
+    document.getElementById('tab-daemon').classList.toggle('active', tab === 'daemon');
+    document.getElementById('panel-operation').style.display = tab === 'operation' ? 'block' : 'none';
+    document.getElementById('panel-daemon').style.display = tab === 'daemon' ? 'block' : 'none';
+    if (tab === 'daemon') loadDaemonLogs();
+}
+
+async function loadDaemonLogs(isRefresh = false) {
+    const loading = document.getElementById('daemon-loading');
+    const content = document.getElementById('daemon-log-content');
+    const info = document.getElementById('daemon-log-info');
+    const lines = document.getElementById('daemon-lines').value;
+    const keyword = document.getElementById('daemon-keyword').value.trim();
+
+    loading.style.display = 'block';
+    content.style.display = 'none';
+
+    try {
+        let url = `/api/logs/daemon?lines=${lines}&tail=true`;
+        if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (resp.ok) {
+            content.textContent = data.lines.join('');
+            info.textContent = `共 ${data.total} 行，显示最新 ${data.returned} 行`;
+            loading.style.display = 'none';
+            content.style.display = 'block';
+        } else {
+            loading.innerHTML = '<span style="color:#ff3b30;">加载失败: ' + (data.detail || '未知错误') + '</span>';
+        }
+    } catch (e) {
+        loading.innerHTML = '<span style="color:#ff3b30;">请求失败: ' + e.message + '</span>';
     }
 }
 

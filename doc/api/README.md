@@ -265,7 +265,50 @@ curl -b /tmp/cookies.txt http://localhost:5080/api/status
 
 ---
 
-## 7. 完整使用示例
+## 8. 守护进程日志
+
+### 8.1 读取守护进程日志
+
+读取 `/main/log/app/ddns-ipv6.log` 文件内容，支持行数限制和关键词筛选。
+
+```bash
+# 读取最近 100 行
+curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=100&tail=true"
+
+# 读取开头 50 行
+curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=50"
+
+# 按关键词筛选（如 error）
+curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=200&tail=true&keyword=error"
+```
+
+**参数说明**:
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `lines` | int | 100 | 返回行数（最大 5000） |
+| `keyword` | string | - | 关键词筛选（大小写敏感） |
+| `tail` | bool | false | 是否只返回末尾行（最新日志） |
+
+**响应示例**:
+```json
+{
+    "lines": [
+        "[2026-05-24 02:44:30] DDNS IPv6 守护进程启动（含 WebUI）\n",
+        "[2026-05-24 02:44:30] [INFO] WebUI 子线程已启动\n"
+    ],
+    "total": 1250,
+    "returned": 100,
+    "lines_requested": 100,
+    "file": "/main/log/app/ddns-ipv6.log",
+    "tail": true,
+    "keyword": null
+}
+```
+
+---
+
+## 9. 完整使用示例
 
 ```bash
 #!/bin/bash
