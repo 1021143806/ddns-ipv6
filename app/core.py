@@ -255,8 +255,16 @@ def get_current_record(config: dict, domain_cfg: dict) -> dict | None:
     for record in records:
         rec_name = record.get("name", "")
         full_name = domain_cfg["record_name"]
-        # 匹配：子域名前缀、完整域名、或完整域名被重复拼接的情况
-        if (rec_name == record_name or rec_name == full_name or rec_name == f"{full_name}.{full_name.split('.', 1)[1]}") and record.get("type") == record_type:
+        # 匹配：完整域名优先，其次子域名前缀，最后兼容重复拼接的脏数据
+        if rec_name == full_name and record.get("type") == record_type:
+            log(f"[INFO] 找到现有记录: id={record.get('id')}, name={rec_name}, content={record.get('content')}")
+            return record
+
+    # 第二遍：匹配子域名前缀或重复拼接的脏数据（兜底）
+    for record in records:
+        rec_name = record.get("name", "")
+        full_name = domain_cfg["record_name"]
+        if (rec_name == record_name or rec_name == f"{full_name}.{full_name.split('.', 1)[1]}") and record.get("type") == record_type:
             log(f"[INFO] 找到现有记录: id={record.get('id')}, name={rec_name}, content={record.get('content')}")
             return record
 
@@ -295,10 +303,11 @@ def create_record(config: dict, domain_cfg: dict, ipv6: str) -> dict | None:
 
 
 def update_record(config: dict, domain_cfg: dict, record_id: int, ipv6: str) -> bool:
-    """更新 AAAA 记录（不传 name，避免 dnshe 名称冲突）"""
+    """更新 AAAA 记录"""
     body = {
         "id": record_id,
         "type": domain_cfg.get("record_type", "AAAA"),
+        "name": get_record_name(domain_cfg),
         "content": ipv6,
         "ttl": domain_cfg.get("ttl", 600),
     }
@@ -361,7 +370,7 @@ def delete_dns_record(config: dict, record_id: str) -> bool:
 
 
 def update_dns_record(config: dict, record_id: str, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
-    """更新 DNS 记录
+    """更新 DNS 记录（先尝试直接更新，失败则先删后建）
 
     Args:
         config: 完整配置
@@ -379,6 +388,7 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
         body = {
             "id": int(record_id),
             "type": record_type,
+            "name": name,
             "content": content,
             "ttl": ttl,
         }
@@ -394,40 +404,69 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
             return True
 
     # 非数字 id（如 pdns_xxx），尝试从 dnshe 查询对应的数字 id
+    subdomain_id = None
+    domains = config.get("domains", [])
+    for d in domains:
+        subdomain_id = d.get("subdomain_id")
+        if subdomain_id:
+            break
+
+    if not subdomain_id:
+        log("[ERROR] 无法获取 subdomain_id")
+        return False
+
     log(f"[INFO] record_id 不是数字，尝试查询数字 id: {record_id}")
     try:
-        # 从配置中获取 subdomain_id
-        domains = config.get("domains", [])
-        for d in domains:
-            subdomain_id = d.get("subdomain_id")
-            if subdomain_id:
-                records = list_all_dns_records(config, subdomain_id)
-                if records:
-                    for r in records:
-                        if r.get("record_id") == record_id:
-                            num_id = r.get("id")
-                            if num_id:
-                                log(f"[INFO] 找到数字 id: {num_id} → 用于更新")
-                                body = {
-                                    "id": int(num_id),
-                                    "type": record_type,
-                                    "content": content,
-                                    "ttl": ttl,
-                                }
-                                resp = api_request(
-                                    config,
-                                    endpoint="dns_records",
-                                    action="update",
-                                    method="POST",
-                                    body=body,
-                                )
-                                if resp is not None:
-                                    log(f"[INFO] 更新 DNS 记录成功: id={num_id}, {name} → {content}")
-                                    return True
-                                log(f"[WARN] 用数字 id {num_id} 更新也失败")
-                                return False
+        records = list_all_dns_records(config, subdomain_id)
+        if records:
+            for r in records:
+                if r.get("record_id") == record_id:
+                    num_id = r.get("id")
+                    if num_id:
+                        log(f"[INFO] 找到数字 id: {num_id} → 用于更新")
+                        body = {
+                            "id": int(num_id),
+                            "type": record_type,
+                            "name": name,
+                            "content": content,
+                            "ttl": ttl,
+                        }
+                        resp = api_request(
+                            config,
+                            endpoint="dns_records",
+                            action="update",
+                            method="POST",
+                            body=body,
+                        )
+                        if resp is not None:
+                            log(f"[INFO] 更新 DNS 记录成功: id={num_id}, {name} → {content}")
+                            return True
+                        log(f"[WARN] 用数字 id {num_id} 更新失败，尝试先删后建")
+                        # 删除旧记录
+                        delete_dns_record(config, record_id=str(num_id))
+                        break
     except Exception as e:
         log(f"[WARN] 查询数字 id 异常: {e}")
+
+    # 直接创建新记录（先删后建）
+    log(f"[INFO] 直接创建新记录（先删后建）: {name} → {content}")
+    body = {
+        "subdomain_id": subdomain_id,
+        "type": record_type,
+        "name": name,
+        "content": content,
+        "ttl": ttl,
+    }
+    resp = api_request(
+        config,
+        endpoint="dns_records",
+        action="create",
+        method="POST",
+        body=body,
+    )
+    if resp is not None:
+        log(f"[INFO] 先删后建成功: {name} → {content} (id={resp.get('id')})")
+        return True
 
     log(f"[ERROR] 更新 DNS 记录失败: id={record_id}")
     return False

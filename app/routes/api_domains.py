@@ -450,7 +450,7 @@ async def generate_nginx_config(request: Request):
 
 @router.put("/dns-record/{record_id}")
 async def api_update_dns_record(record_id: str, request: Request):
-    """更新 DNS 记录（支持修改类型：先删后建）"""
+    """更新 DNS 记录"""
     require_auth(request, _get_config(request))
     body = await request.json()
 
@@ -461,7 +461,6 @@ async def api_update_dns_record(record_id: str, request: Request):
 
     config = _reload_config(request)
 
-    # 尝试直接更新
     success = update_dns_record(
         config,
         record_id=record_id,
@@ -471,54 +470,11 @@ async def api_update_dns_record(record_id: str, request: Request):
         ttl=int(body.get("ttl", 600)),
     )
 
-    if success:
-        add_log(f"dns_{record_id}", body["name"], "config_update", message=f"更新 DNS 记录: {body['name']} → {body['content']}")
-        return {"success": True}
+    if not success:
+        raise HTTPException(status_code=500, detail="更新 DNS 记录失败")
 
-    # 如果更新失败（可能因为修改了 type），先删除再创建
-    log_msg = f"[INFO] 直接更新失败，尝试先删后建: id={record_id}"
-    print(log_msg)
-
-    # 获取 subdomain_id（从配置中取第一个）
-    domains = config.get("domains", [])
-    subdomain_id = domains[0]["subdomain_id"] if domains else 404037
-
-    # 先查询该记录的数字 id，用于 delete
-    records = list_all_dns_records(config, subdomain_id)
-    num_id = None
-    if records:
-        for r in records:
-            if r.get("record_id") == record_id:
-                num_id = r.get("id")
-                break
-
-    # 删除旧记录（用数字 id）
-    del_ok = delete_dns_record(config, record_id=str(num_id) if num_id else record_id)
-    if not del_ok:
-        raise HTTPException(status_code=500, detail="删除旧记录失败，无法修改类型")
-
-    # 创建新记录
-    from app.core import api_request as core_api_request
-    create_body = {
-        "subdomain_id": subdomain_id,
-        "type": body["type"],
-        "name": body["name"],
-        "content": body["content"],
-        "ttl": int(body.get("ttl", 600)),
-    }
-    create_resp = core_api_request(
-        config,
-        endpoint="dns_records",
-        action="create",
-        method="POST",
-        body=create_body,
-    )
-
-    if create_resp is None:
-        raise HTTPException(status_code=500, detail="创建新记录失败")
-
-    add_log(f"dns_{record_id}", body["name"], "config_update", message=f"修改类型并更新: {body['name']} → {body['content']}")
-    return {"success": True, "new_record_id": create_resp.get("id")}
+    add_log(f"dns_{record_id}", body["name"], "config_update", message=f"更新 DNS 记录: {body['name']} → {body['content']}")
+    return {"success": True}
 
 
 @router.delete("/dns-record/{record_id}")
