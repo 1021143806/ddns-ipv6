@@ -57,7 +57,7 @@
                 </div>
                 <div>
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">记录类型</label>
-                    <select id="form-record-type" class="mac-input">
+                    <select id="form-record-type" class="mac-input" onchange="onRecordTypeChange()">
                         <option value="AAAA">AAAA</option>
                         <option value="A">A</option>
                         <option value="TXT">TXT</option>
@@ -239,6 +239,7 @@ async function loadRecords() {
             const ttl = r.ttl || '-';
             const status = r.status || 'active';
             const isDDNS = !!ddnsMap[name];
+            const isAAAA = type === 'AAAA';
             const hasNginx = !!nginxMap[name];
 
             let typeColor = 'var(--text-secondary)';
@@ -259,8 +260,8 @@ async function loadRecords() {
                 <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
                 <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
                 <td style="text-align:right;white-space:nowrap;">
-                    ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : ''}
-                    <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">${hasNginx ? 'Nginx' : 'Nginx'}</button>
+                    ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', ${recordId}, '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
+                    <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
                     <button onclick="showEditRecordModal(${recordId}, '${subdomain}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
                     <button onclick="deleteRecord(${recordId}, '${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
                 </td>
@@ -272,6 +273,15 @@ async function loadRecords() {
         content.style.display = 'block';
     } catch (e) {
         loading.innerHTML = '<span style="color:#ff3b30;">加载失败: ' + e.message + '</span>';
+    }
+}
+
+// ===== 记录类型变更：AAAA 自动开启 DDNS =====
+function onRecordTypeChange() {
+    const type = document.getElementById('form-record-type').value;
+    const ddnsCheckbox = document.getElementById('form-enabled');
+    if (type === 'AAAA') {
+        ddnsCheckbox.checked = true;
     }
 }
 
@@ -364,6 +374,33 @@ async function checkDomain(domainId) {
             loadRecords();
         } else {
             alert('检查失败');
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+// ===== 开启 DDNS 监控 =====
+async function enableDDNS(name, recordId, subdomain) {
+    if (!confirm(`确定要为 "${name}" 开启 DDNS 自动更新吗？`)) return;
+    try {
+        const resp = await fetch('/api/domains', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: subdomain,
+                record_name: name,
+                subdomain_id: 404037,
+                record_type: 'AAAA',
+                ttl: 600,
+                enabled: true,
+            }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            loadRecords();
+        } else {
+            alert('开启失败: ' + (data.detail || '未知错误'));
         }
     } catch (e) {
         alert('请求失败: ' + e.message);
