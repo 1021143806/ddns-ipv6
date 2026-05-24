@@ -568,6 +568,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         }
 
         closeModal();
+        try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
         loadRecords();
     } catch (err) {
         let msg = '网络请求失败，请检查网络连接';
@@ -744,6 +745,8 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             }
 
             closeModal();
+            // 先刷新缓存再重新加载列表
+            try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
             loadRecords();
         } catch (err) {
             showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
@@ -814,6 +817,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         }
 
         closeModal();
+        try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
         loadRecords();
     } catch (err) {
         showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
