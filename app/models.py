@@ -229,11 +229,10 @@ def get_hourly_api_count() -> int:
 
 
 def get_hourly_api_stats(hours: int = 24) -> list[dict]:
-    """获取最近 N 小时的 API 调用统计（按半小时聚合）
+    """获取最近 N 小时的 API 调用统计（按半小时聚合，区分操作类型）
 
     Returns:
-        [{"hour": "2026-05-23 08:00", "count": 5, "limit": 30},
-         {"hour": "2026-05-23 08:30", "count": 3, "limit": 30}, ...]
+        [{"hour": "...", "count": 5, "list": 3, "create": 1, "update": 1, "delete": 0, "limit": 300}, ...]
     """
     conn = get_db()
     from datetime import timedelta
@@ -244,22 +243,28 @@ def get_hourly_api_stats(hours: int = 24) -> list[dict]:
                       WHEN CAST(strftime('%M', created_at) AS INTEGER) < 30 THEN '00'
                       ELSE '30'
                   END as slot,
+                  endpoint, action,
                   COUNT(*) as count
            FROM api_call_log
            WHERE created_at >= ?
-           GROUP BY slot
+           GROUP BY slot, endpoint, action
            ORDER BY slot ASC""",
         (start,),
     ).fetchall()
 
-    result = []
+    # 按 slot 聚合
+    slot_map: dict[str, dict] = {}
     for r in rows:
-        result.append({
-            "hour": r["slot"] + ":00",
-            "count": r["count"],
-            "limit": API_HOURLY_LIMIT,
-        })
-    return result
+        slot = r["slot"] + ":00"
+        if slot not in slot_map:
+            slot_map[slot] = {"hour": slot, "count": 0, "list": 0, "create": 0, "update": 0, "delete": 0, "limit": API_HOURLY_LIMIT}
+        entry = slot_map[slot]
+        entry["count"] += r["count"]
+        action_key = r["action"]
+        if action_key in ("list", "create", "update", "delete"):
+            entry[action_key] += r["count"]
+
+    return list(slot_map.values())
 
 
 def get_api_rate_status() -> dict:

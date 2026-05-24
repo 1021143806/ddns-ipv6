@@ -182,7 +182,7 @@ def api_request(
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             record_api_call(endpoint, action, success=True)
             return result
@@ -370,12 +370,10 @@ def delete_dns_record(config: dict, record_id: str) -> bool:
 
 
 def update_dns_record(config: dict, record_id: str, record_type: str, name: str, content: str, ttl: int = 600) -> bool:
-    """更新 DNS 记录（dnshe update 接口有 bug，直接走先删后建）
+    """更新 DNS 记录（先比较新旧值，相同则跳过；不同则先删后建）
 
-    dnshe API 的 update 接口存在已知问题：
-    - 即使返回 success，也可能把 name 改坏（如 maiapi → maiapi.ptrel.cc.cd.ptrel.cc.cd）
-    - 有同名记录时返回 Record conflict
-    因此直接走"先删后建"路径。
+    dnshe API 的 update 接口存在已知问题（即使返回 success 也可能把 name 改坏），
+    因此需要修改时走"先删后建"路径。
 
     Args:
         config: 完整配置
@@ -399,30 +397,42 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
         log("[ERROR] 无法获取 subdomain_id")
         return False
 
-    # 查询数字 id，用于删除旧记录
-    num_id = None
-    if record_id.isdigit():
-        num_id = int(record_id)
-    else:
-        log(f"[INFO] 查询数字 id: {record_id}")
-        try:
-            records = list_all_dns_records(config, subdomain_id)
-            if records:
-                for r in records:
-                    if r.get("record_id") == record_id:
-                        num_id = r.get("id")
-                        if num_id:
-                            log(f"[INFO] 找到数字 id: {num_id}")
-                            break
-        except Exception as e:
-            log(f"[WARN] 查询数字 id 异常: {e}")
+    # 从 dnshe 查询最新记录
+    log(f"[INFO] 查询最新记录: record_id={record_id}")
+    records = list_all_dns_records(config, subdomain_id)
+    if not records:
+        log("[ERROR] 查询记录失败")
+        return False
+
+    # 查找匹配的记录
+    matched = None
+    for r in records:
+        if r.get("record_id") == record_id:
+            matched = r
+            break
+
+    if matched is None:
+        log(f"[WARN] 未找到匹配记录: record_id={record_id}")
+        return False
+
+    num_id = matched.get("id")
+    cur_content = matched.get("content", "")
+    cur_ttl = matched.get("ttl", 600)
+    log(f"[INFO] 当前记录: id={num_id}, content={cur_content}, ttl={cur_ttl}")
+
+    # 比较新旧值，相同则跳过
+    if cur_content == content and int(cur_ttl) == ttl:
+        log(f"[INFO] 记录未变化，跳过更新")
+        return True
+
+    # 不同则先删后建
+    log(f"[INFO] 记录已变化，执行先删后建: {name} → {content} (ttl={ttl})")
 
     # 删除旧记录
     if num_id:
         delete_dns_record(config, record_id=str(num_id))
 
     # 创建新记录
-    log(f"[INFO] 创建新记录: {name} → {content}")
     body = {
         "subdomain_id": subdomain_id,
         "type": record_type,
@@ -439,6 +449,14 @@ def update_dns_record(config: dict, record_id: str, record_type: str, name: str,
     )
     if resp is not None:
         log(f"[INFO] 创建新记录成功: {name} → {content} (id={resp.get('id')})")
+        # 同步更新本地缓存
+        try:
+            from app.models import update_dns_records_cache
+            fresh = list_all_dns_records(config, subdomain_id)
+            if fresh:
+                update_dns_records_cache(fresh, subdomain_id)
+        except Exception:
+            pass
         return True
 
     log(f"[ERROR] 更新 DNS 记录失败: id={record_id}")

@@ -524,10 +524,13 @@ async def api_delete_dns_record(record_id: str, request: Request):
         # 自动清理本地缓存
         from app.models import get_db
         conn = get_db()
-        # 尝试用 record_id 或 dnshe_id 匹配
+        try:
+            dnshe_id = int(record_id) if record_id.isdigit() else -1
+        except (ValueError, TypeError):
+            dnshe_id = -1
         deleted = conn.execute(
             "DELETE FROM dns_records_cache WHERE record_id = ? OR dnshe_id = ?",
-            (record_id, int(record_id) if record_id.isdigit() else -1),
+            (record_id, dnshe_id),
         ).rowcount
         conn.commit()
 
@@ -542,8 +545,12 @@ async def api_delete_dns_record(record_id: str, request: Request):
     # 同步删除本地缓存
     from app.models import get_db
     conn = get_db()
+    try:
+        dnshe_id = int(record_id) if record_id.isdigit() else -1
+    except (ValueError, TypeError):
+        dnshe_id = -1
     conn.execute("DELETE FROM dns_records_cache WHERE record_id = ? OR dnshe_id = ?",
-                 (record_id, int(record_id) if record_id.isdigit() else -1))
+                 (record_id, dnshe_id))
     conn.commit()
 
     add_log(f"dns_{record_id}", "", "config_delete", message=f"删除 DNS 记录: id={record_id}")
