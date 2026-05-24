@@ -90,7 +90,7 @@ def save_config(config: dict) -> None:
 
 def log(msg: str) -> str:
     """生成带时间戳的日志字符串，同时返回"""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{now}] {msg}"
     print(line, flush=True)
     return line
