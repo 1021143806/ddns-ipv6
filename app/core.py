@@ -137,24 +137,22 @@ def get_ipv6_address(interface: str = "") -> str | None:
 def get_ipv4_address() -> str | None:
     """通过外部 HTTP 服务获取本机公网 IPv4 地址
 
-    依次尝试多个服务，提高成功率。
+    依次尝试多个服务，提高成功率。每个服务超时 5 秒。
 
     Returns:
         IPv4 地址字符串，失败返回 None
     """
     services = [
-        "https://ifconfig.me/ip",
         "https://checkip.amazonaws.com/",
+        "https://ifconfig.me/ip",
         "https://icanhazip.com/",
-        "https://api.ip.sb/ip",
     ]
 
     for service in services:
         try:
             req = urllib.request.Request(service)
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 ip = resp.read().decode("utf-8").strip()
-                # 简单验证是否为 IPv4 地址
                 if ip and ":" not in ip and "." in ip:
                     log(f"[INFO] 检测到 IPv4 地址: {ip} (来源: {service})")
                     return ip

@@ -213,6 +213,66 @@
         }
     }
 
+    // IP 地址知识提示
+    function showIPTip(type) {
+        const existing = document.getElementById('ip-tip-modal');
+        if (existing) existing.remove();
+
+        const isIPv4 = type === 'ipv4';
+        const title = isIPv4 ? '🌐 IPv4 公网地址' : '🌐 IPv6 公网地址';
+        const content = isIPv4 ? `
+            <p><b>什么是公网 IPv4？</b></p>
+            <p>公网 IPv4 是互联网上唯一的 IPv4 地址，用于标识您的设备在网络中的位置。</p>
+            <br>
+            <p><b>查询原理</b></p>
+            <p>通过访问外部服务（如 checkip.amazonaws.com）获取本机出口的公网 IPv4 地址。如果您的设备在 NAT 后面，获取到的是路由器的公网地址。</p>
+            <br>
+            <p><b>为什么可能不存在？</b></p>
+            <p>• 您的网络只有 IPv6 连接，没有 IPv4 公网地址</p>
+            <p>• 运营商使用 CGNAT（运营商级 NAT），没有分配独立公网 IPv4</p>
+            <p>• 外部服务暂时不可用</p>
+            <br>
+            <p><b>如何获取？</b></p>
+            <p>• 联系您的网络运营商申请公网 IPv4 地址</p>
+            <p>• 使用 curl 命令手动查询：<code style="font-size:0.78rem;">curl ifconfig.me</code></p>
+            <p>• 登录路由器管理页面查看 WAN 口 IP</p>
+        ` : `
+            <p><b>什么是公网 IPv6？</b></p>
+            <p>公网 IPv6 是互联网上唯一的 IPv6 地址，相比 IPv4 地址更充足，每个设备都可以拥有独立的公网 IPv6 地址。</p>
+            <br>
+            <p><b>查询原理</b></p>
+            <p>通过执行系统命令 <code style="font-size:0.78rem;">ip -6 addr show</code> 检测本机网卡上的 global dynamic 作用域的 IPv6 地址。</p>
+            <br>
+            <p><b>为什么可能不存在？</b></p>
+            <p>• 您的网络运营商未分配 IPv6 地址</p>
+            <p>• 路由器未开启 IPv6 功能</p>
+            <p>• 网卡未获取到 IPv6 地址（如 DHCPv6 未配置）</p>
+            <br>
+            <p><b>如何获取？</b></p>
+            <p>• 联系您的网络运营商开通 IPv6 服务</p>
+            <p>• 在路由器管理页面开启 IPv6（通常选择 DHCPv6 或 SLAAC）</p>
+            <p>• 使用命令查看：<code style="font-size:0.78rem;">ip -6 addr show | grep "scope global"</code></p>
+            <p>• 在线检测：<code style="font-size:0.78rem;">curl -6 ifconfig.me</code></p>
+        `;
+
+        const modal = document.createElement('div');
+        modal.id = 'ip-tip-modal';
+        modal.className = 'mac-modal-overlay';
+        modal.onclick = function(e) { if (e.target === this) this.remove(); };
+        modal.innerHTML = `
+            <div class="mac-modal" style="max-width:520px;max-height:80vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);">${title}</h2>
+                    <button onclick="document.getElementById('ip-tip-modal').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
+                </div>
+                <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                    ${content}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
     // 帮助弹窗
     function toggleHelp() {
         const existing = document.getElementById('help-modal');
