@@ -14,7 +14,7 @@ import threading
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.core import load_config, check_and_update_domain, log
+from app.core import load_config, check_and_update_domain, log, get_ipv6_address
 from app.models import add_log, upsert_domain_status
 
 
@@ -52,7 +52,7 @@ def start_webui(config: dict) -> None:
 
 
 def main() -> None:
-    """主循环"""
+    """主循环（双循环架构：快速检测 + 全量同步）"""
     log("=" * 50)
     log("DDNS IPv6 守护进程启动（含 WebUI）")
 
@@ -66,82 +66,112 @@ def main() -> None:
     log("[INFO] WebUI 子线程已启动")
 
     log(f"域名数量: {len(domains)}")
-    log(f"全局检查间隔: {daemon_cfg.get('check_interval', 300)} 秒")
+    full_check_interval = daemon_cfg.get("check_interval", 300)
+    fast_check_interval = daemon_cfg.get("fast_check_interval", 10)
+    log(f"快速检测间隔: {fast_check_interval} 秒")
+    log(f"全量同步间隔: {full_check_interval} 秒")
     log("=" * 50)
 
-    # 记录每个域名的上次 IPv6 地址，用于跳过未变化的情况
+    # 记录每个域名的上次 IPv6 地址
     last_ip_map: dict[str, str] = {}
+    # 记录本机当前 IPv6 地址（快速检测用）
+    last_local_ipv6: str | None = None
+    last_full_check_time = 0.0
 
     while True:
         try:
             # 热加载配置
             config = load_config()
             domains = config.get("domains", [])
+            daemon_cfg = config.get("daemon", {})
+            full_check_interval = daemon_cfg.get("check_interval", 300)
+            fast_check_interval = daemon_cfg.get("fast_check_interval", 10)
+            now = time.time()
 
-            for domain_cfg in domains:
-                domain_id = domain_cfg.get("id", domain_cfg["record_name"])
+            # ===== 快速检测：只查本机 IPv6 是否变化 =====
+            interface = config.get("network", {}).get("interface", "")
+            current_local_ipv6 = get_ipv6_address(interface)
 
-                # 跳过禁用的域名
-                if not domain_cfg.get("enabled", True):
-                    continue
+            if current_local_ipv6 and current_local_ipv6 != last_local_ipv6:
+                log(f"[INFO] 检测到本机 IPv6 地址变化: {last_local_ipv6} → {current_local_ipv6}，立即更新远端")
+                last_local_ipv6 = current_local_ipv6
+                last_full_check_time = now  # 重置全量检查计时器
 
-                try:
-                    result = check_and_update_domain(config, domain_cfg)
+                # 立即更新所有启用的域名
+                for domain_cfg in domains:
+                    domain_id = domain_cfg.get("id", domain_cfg["record_name"])
+                    if not domain_cfg.get("enabled", True):
+                        continue
+                    try:
+                        result = check_and_update_domain(config, domain_cfg)
+                        _handle_result(result, domain_id, last_ip_map)
+                    except Exception as e:
+                        log(f"[ERROR] 域名 {domain_cfg.get('record_name', '?')} 处理异常: {e}")
+                        add_log(domain_id=domain_id, record_name=domain_cfg.get("record_name", ""),
+                                action="error", message=str(e))
+                        upsert_domain_status(domain_id=domain_id,
+                                             record_name=domain_cfg.get("record_name", ""), status="error")
+            elif current_local_ipv6 is None:
+                log("[WARN] 无法获取本机 IPv6 地址")
+            else:
+                # 地址未变化，记录首次获取的地址
+                if last_local_ipv6 is None:
+                    last_local_ipv6 = current_local_ipv6
 
-                    # 如果地址未变化且之前已记录，减少日志噪音
-                    if result["action"] == "skip" and last_ip_map.get(domain_id) == result["new_ip"]:
-                        # 仅更新检查时间，不写日志
-                        upsert_domain_status(
-                            domain_id=result["domain_id"],
-                            record_name=result["record_name"],
-                            current_ip=result["new_ip"],
-                            status="ok",
-                            is_update=False,
-                        )
-                    else:
-                        # 记录日志
-                        add_log(
-                            domain_id=result["domain_id"],
-                            record_name=result["record_name"],
-                            action=result["action"],
-                            old_ip=result["old_ip"],
-                            new_ip=result["new_ip"],
-                            message=result["message"],
-                        )
-                        # 更新状态
-                        upsert_domain_status(
-                            domain_id=result["domain_id"],
-                            record_name=result["record_name"],
-                            current_ip=result["new_ip"],
-                            status="ok" if result["action"] in ("create", "update", "skip") else "error",
-                            is_update=(result["action"] in ("create", "update")),
-                        )
+            # ===== 全量同步：定期查询远端确保一致性 =====
+            if now - last_full_check_time >= full_check_interval:
+                log(f"[INFO] 执行全量同步检查（间隔 {full_check_interval} 秒）")
+                last_full_check_time = now
 
-                    if result["new_ip"]:
-                        last_ip_map[domain_id] = result["new_ip"]
+                for domain_cfg in domains:
+                    domain_id = domain_cfg.get("id", domain_cfg["record_name"])
+                    if not domain_cfg.get("enabled", True):
+                        continue
+                    try:
+                        result = check_and_update_domain(config, domain_cfg)
+                        _handle_result(result, domain_id, last_ip_map)
+                    except Exception as e:
+                        log(f"[ERROR] 域名 {domain_cfg.get('record_name', '?')} 处理异常: {e}")
+                        add_log(domain_id=domain_id, record_name=domain_cfg.get("record_name", ""),
+                                action="error", message=str(e))
+                        upsert_domain_status(domain_id=domain_id,
+                                             record_name=domain_cfg.get("record_name", ""), status="error")
 
-                except Exception as e:
-                    log(f"[ERROR] 域名 {domain_cfg.get('record_name', '?')} 处理异常: {e}")
-                    add_log(
-                        domain_id=domain_id,
-                        record_name=domain_cfg.get("record_name", ""),
-                        action="error",
-                        message=str(e),
-                    )
-                    upsert_domain_status(
-                        domain_id=domain_id,
-                        record_name=domain_cfg.get("record_name", ""),
-                        status="error",
-                    )
-
-            # 使用全局检查间隔
-            check_interval = daemon_cfg.get("check_interval", 300)
-            log(f"[INFO] 等待 {check_interval} 秒后进行下一轮检查...")
-            time.sleep(check_interval)
+            time.sleep(fast_check_interval)
 
         except Exception as e:
             log(f"[ERROR] 主循环异常: {e}")
             time.sleep(60)
+
+
+def _handle_result(result: dict, domain_id: str, last_ip_map: dict) -> None:
+    """处理单个域名的检测结果（记录日志、更新状态）"""
+    if result["action"] == "skip" and last_ip_map.get(domain_id) == result["new_ip"]:
+        upsert_domain_status(
+            domain_id=result["domain_id"],
+            record_name=result["record_name"],
+            current_ip=result["new_ip"],
+            status="ok",
+            is_update=False,
+        )
+    else:
+        add_log(
+            domain_id=result["domain_id"],
+            record_name=result["record_name"],
+            action=result["action"],
+            old_ip=result["old_ip"],
+            new_ip=result["new_ip"],
+            message=result["message"],
+        )
+        upsert_domain_status(
+            domain_id=result["domain_id"],
+            record_name=result["record_name"],
+            current_ip=result["new_ip"],
+            status="ok" if result["action"] in ("create", "update", "skip") else "error",
+            is_update=(result["action"] in ("create", "update")),
+        )
+    if result["new_ip"]:
+        last_ip_map[domain_id] = result["new_ip"]
 
 
 if __name__ == "__main__":
