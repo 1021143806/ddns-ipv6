@@ -10,7 +10,7 @@
 <div class="mac-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
         <h2 style="font-size:1rem;font-weight:600;color:var(--text-primary);">全部记录 <span id="record-count" style="font-weight:400;color:var(--text-secondary);font-size:0.85rem;"></span></h2>
-        <button onclick="loadRecords()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
+        <button onclick="refreshRecords()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;padding:0.4rem 0.9rem;">🔄 刷新</button>
     </div>
     <div id="records-loading" style="text-align:center;padding:2rem 0;color:var(--text-secondary);">加载中...</div>
     <div id="records-content" class="overflow-x-auto" style="display:none;">
@@ -33,6 +33,16 @@
 
 {% block scripts %}
 <script>
+async function refreshRecords() {
+    const btn = event.target;
+    try {
+        await btnLoading(btn, '刷新中', fetch('/api/domains/dns-records/refresh', { method: 'POST' }));
+        loadRecords();
+    } catch (e) {
+        // btnLoading 已处理
+    }
+}
+
 async function loadRecords() {
     const loading = document.getElementById('records-loading');
     const content = document.getElementById('records-content');

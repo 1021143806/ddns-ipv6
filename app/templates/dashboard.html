@@ -284,10 +284,8 @@ function copyIP(elementId) {
 
 async function checkDomain(domainId) {
     const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '检查中...';
     try {
-        const resp = await fetch(`/api/domains/${domainId}/check`, { method: 'POST' });
+        const resp = await btnLoading(btn, '检查中', fetch(`/api/domains/${domainId}/check`, { method: 'POST' }));
         const data = await resp.json();
         if (data.success) {
             alert(`检查完成: ${data.result.message}`);
@@ -296,18 +294,14 @@ async function checkDomain(domainId) {
             alert('检查失败');
         }
     } catch (e) {
-        alert('请求失败: ' + e.message);
+        // btnLoading 已处理错误显示
     }
-    btn.disabled = false;
-    btn.textContent = '立即检查';
 }
 
 async function checkAll() {
     const btn = document.getElementById('btn-check-all');
-    btn.disabled = true;
-    btn.textContent = '检查中...';
     try {
-        const resp = await fetch('/api/domains/check-all', { method: 'POST' });
+        const resp = await btnLoading(btn, '检查全部', fetch('/api/domains/check-all', { method: 'POST' }));
         const data = await resp.json();
         if (data.success) {
             const msgs = data.results.map(r => `${r.record_name || r.domain_id}: ${r.message}`).join('\n');
@@ -317,10 +311,8 @@ async function checkAll() {
             alert('检查失败');
         }
     } catch (e) {
-        alert('请求失败: ' + e.message);
+        // btnLoading 已处理错误显示
     }
-    btn.disabled = false;
-    btn.textContent = '🔄 检查全部域名';
 }
 </script>
 {% endblock %}

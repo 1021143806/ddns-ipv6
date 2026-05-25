@@ -101,6 +101,12 @@
         .mac-modal { background: var(--card-bg); backdrop-filter: blur(32px) saturate(140%); -webkit-backdrop-filter: blur(32px) saturate(140%); border: 1px solid var(--card-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); padding: 1.75rem; width: 100%; max-width: 480px; margin: 1rem; animation: macCardEntrance 0.35s cubic-bezier(0.22,0.61,0.36,1) both; }
         @keyframes macCardEntrance { 0% { opacity: 0; transform: translateY(16px) scale(0.97); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
         .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        /* 加载动画 */
+        @keyframes btn-loading-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .btn-loading-icon { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: btn-loading-spin 0.6s linear infinite; vertical-align: middle; margin-right: 4px; }
+        .btn-loading { pointer-events: none; opacity: 0.8; }
+        .btn-loading-success { background: #34c759 !important; box-shadow: 0 2px 8px rgba(52,199,89,0.28) !important; }
+        .btn-loading-error { background: #ff3b30 !important; box-shadow: 0 2px 8px rgba(255,59,48,0.28) !important; }
     </style>
 </head>
 <body>
@@ -164,6 +170,48 @@
             }
         }
     });
+
+    // ===== 全局按钮加载动画工具 =====
+    // 使用: await btnLoading(btn, '检查中', fetch('/api/...'))
+    async function btnLoading(btn, actionText, fetchPromise) {
+        const startTime = Date.now();
+        const origText = btn.textContent;
+        const origDisabled = btn.disabled;
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+
+        const timerId = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            btn.innerHTML = `<span class="btn-loading-icon"></span> ${actionText}... (${elapsed.toLocaleString()}ms)`;
+        }, 100);
+
+        try {
+            const result = await fetchPromise;
+            clearInterval(timerId);
+            const elapsed = Date.now() - startTime;
+            btn.classList.remove('btn-loading');
+            btn.classList.add('btn-loading-success');
+            btn.innerHTML = `✅ ${actionText.replace('中', '完成')} (${elapsed.toLocaleString()}ms)`;
+            setTimeout(() => {
+                btn.textContent = origText;
+                btn.disabled = origDisabled;
+                btn.classList.remove('btn-loading-success');
+            }, 1500);
+            return result;
+        } catch (e) {
+            clearInterval(timerId);
+            const elapsed = Date.now() - startTime;
+            btn.classList.remove('btn-loading');
+            btn.classList.add('btn-loading-error');
+            btn.innerHTML = `❌ 失败 (${elapsed.toLocaleString()}ms)`;
+            setTimeout(() => {
+                btn.textContent = origText;
+                btn.disabled = origDisabled;
+                btn.classList.remove('btn-loading-error');
+            }, 2000);
+            throw e;
+        }
+    }
 
     // 帮助弹窗
     function toggleHelp() {

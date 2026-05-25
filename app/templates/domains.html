@@ -30,6 +30,30 @@
     </div>
 </div>
 
+<!-- 公网 IP 地址 -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6" id="public-ips-section">
+    <div class="mac-card">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+            <span class="mac-badge" style="background:rgba(0,122,255,0.12);color:#007aff;font-size:0.75rem;padding:0.15rem 0.5rem;">IPv4</span>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">公网地址</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span id="public-ipv4" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">检测中...</span>
+            <button onclick="copyIP('public-ipv4')" class="mac-link" style="font-size:0.78rem;text-decoration:none;" title="复制">📋</button>
+        </div>
+    </div>
+    <div class="mac-card">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+            <span class="mac-badge" style="background:rgba(52,199,89,0.12);color:#34c759;font-size:0.75rem;padding:0.15rem 0.5rem;">IPv6</span>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">公网地址</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span id="public-ipv6" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">检测中...</span>
+            <button onclick="copyIP('public-ipv6')" class="mac-link" style="font-size:0.78rem;text-decoration:none;" title="复制">📋</button>
+        </div>
+    </div>
+</div>
+
 <!-- 全部 DNS 记录 -->
 <div class="mac-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
@@ -326,21 +350,17 @@ async function loadNginxConfigs() {
 // ===== 从 dnshe API 刷新缓存 =====
 async function refreshRecords() {
     const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '刷新中...';
     try {
-        const resp = await fetch('/api/domains/dns-records/refresh', { method: 'POST' });
+        const resp = await btnLoading(btn, '刷新中', fetch('/api/domains/dns-records/refresh', { method: 'POST' }));
         const data = await resp.json();
         if (resp.ok) {
-            loadRecords(); // 重新加载
+            loadRecords();
         } else {
-            alert('刷新失败: ' + (data.detail || '未知错误'));
+            showError('刷新失败', data.detail || '未知错误');
         }
     } catch (e) {
         showError('请求失败', e.message || '无法连接到服务器，请检查网络或刷新页面重试');
     }
-    btn.disabled = false;
-    btn.textContent = '🔄 刷新';
 }
 
 // ===== 排序状态 =====
@@ -501,6 +521,7 @@ function closeModal() {
 
 document.getElementById('domain-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
     const recordName = document.getElementById('form-record-name').value.trim();
     const subdomainId = parseInt(document.getElementById('form-subdomain-id').value);
     const recordType = document.getElementById('form-record-type').value;
@@ -520,11 +541,11 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             ttl: ttl,
         };
         if (line) body.line = line;
-        const resp = await fetch('/api/domains/dns-record/create', {
+        const resp = await btnLoading(btn, '创建中', fetch('/api/domains/dns-record/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
-        });
+        }));
         if (!resp.ok) {
             const errData = await resp.json().catch(() => ({}));
             showModal(`
@@ -592,8 +613,9 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
 });
 
 async function checkDomain(domainId) {
+    const btn = event.target;
     try {
-        const resp = await fetch(`/api/domains/${domainId}/check`, { method: 'POST' });
+        const resp = await btnLoading(btn, '检查中', fetch(`/api/domains/${domainId}/check`, { method: 'POST' }));
         const data = await resp.json();
         if (data.success) {
             alert(data.result.message);
@@ -657,11 +679,11 @@ function showEditRecordModal(recordId, name, type, content, ttl) {
     document.getElementById('domain-modal').classList.remove('hidden');
 }
 
-// 修改表单提交逻辑
-const origSubmit = document.getElementById('domain-form').submit;
+// 修改表单提交逻辑（编辑模式）
 document.getElementById('domain-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const method = document.getElementById('form-method').value;
+    const btn = e.target.querySelector('button[type="submit"]');
 
     if (method === 'EDIT') {
         // 编辑模式：调用 dnshe API 更新
@@ -680,11 +702,11 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             // 1. 更新 DNS 记录
             const updateBody = { type: recordType, name: subdomain, content: recordValue, ttl: ttl };
             if (line) updateBody.line = line;
-            const resp = await fetch(`/api/domains/dns-record/${recordId}`, {
+            const resp = await btnLoading(btn, '保存中', fetch(`/api/domains/dns-record/${recordId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updateBody),
-            });
+            }));
             const data = await resp.json();
             if (!resp.ok || !data.success) {
                 showModal(`
@@ -860,8 +882,6 @@ function closeRegisterModal() {
 document.getElementById('register-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('reg-submit-btn');
-    btn.disabled = true;
-    btn.textContent = '创建中...';
     document.getElementById('reg-result').classList.add('hidden');
     document.getElementById('reg-error').classList.add('hidden');
 
@@ -871,11 +891,11 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     };
 
     try {
-        const resp = await fetch('/api/domains/register-subdomain', {
+        const resp = await btnLoading(btn, '创建中', fetch('/api/domains/register-subdomain', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
-        });
+        }));
         const data = await resp.json();
         if (resp.ok) {
             const result = data.result;
@@ -883,18 +903,13 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
             document.getElementById('reg-result-msg').textContent =
                 `子域名 ${body.subdomain}.${body.rootdomain} 创建成功！子域名 ID: ${subdomainId}`;
             document.getElementById('reg-result').classList.remove('hidden');
-            btn.textContent = '✅ 已创建';
         } else {
             document.getElementById('reg-error-msg').textContent = data.detail || '创建失败';
             document.getElementById('reg-error').classList.remove('hidden');
-            btn.disabled = false;
-            btn.textContent = '创建';
         }
     } catch (err) {
         document.getElementById('reg-error-msg').textContent = '请求失败: ' + err.message;
         document.getElementById('reg-error').classList.remove('hidden');
-        btn.disabled = false;
-        btn.textContent = '创建';
     }
 });
 
@@ -919,8 +934,6 @@ function closeNginxModal() {
 document.getElementById('nginx-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('nginx-submit-btn');
-    btn.disabled = true;
-    btn.textContent = '生成中...';
     document.getElementById('nginx-result').classList.add('hidden');
     document.getElementById('nginx-error').classList.add('hidden');
 
@@ -930,11 +943,11 @@ document.getElementById('nginx-form').addEventListener('submit', async (e) => {
     };
 
     try {
-        const resp = await fetch('/api/domains/nginx-config', {
+        const resp = await btnLoading(btn, '生成中', fetch('/api/domains/nginx-config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
-        });
+        }));
         const data = await resp.json();
         if (data.success) {
             document.getElementById('nginx-result-msg').innerHTML =
@@ -942,20 +955,15 @@ document.getElementById('nginx-form').addEventListener('submit', async (e) => {
                 `请执行: <code>sudo nginx -s reload</code><br><br>` +
                 `<details><summary>查看配置内容</summary><pre style="font-size:0.75rem;margin-top:0.5rem;overflow:auto;">${data.config.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></details>`;
             document.getElementById('nginx-result').classList.remove('hidden');
-            btn.textContent = '✅ 已生成';
         } else {
             document.getElementById('nginx-error-msg').innerHTML =
                 `❌ ${data.detail || '生成失败'}<br><br>` +
                 `<details><summary>查看配置内容</summary><pre style="font-size:0.75rem;margin-top:0.5rem;overflow:auto;">${(data.config || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></details>`;
             document.getElementById('nginx-error').classList.remove('hidden');
-            btn.disabled = false;
-            btn.textContent = '重试';
         }
     } catch (err) {
         document.getElementById('nginx-error-msg').textContent = '请求失败: ' + err.message;
         document.getElementById('nginx-error').classList.remove('hidden');
-        btn.disabled = false;
-        btn.textContent = '重试';
     }
 });
 
@@ -970,10 +978,40 @@ document.getElementById('nginx-modal').addEventListener('click', function(e) {
     if (e.target === this) closeNginxModal();
 });
 
-// 页面加载时自动加载 DNS 记录和图表
+// ===== 公网 IP 地址（复用 dashboard 逻辑） =====
+async function loadPublicIPs() {
+    try {
+        const resp = await fetch('/api/domains/network/public-ips');
+        const data = await resp.json();
+        const ipv4El = document.getElementById('public-ipv4');
+        const ipv6El = document.getElementById('public-ipv6');
+        if (data.ipv4) { ipv4El.textContent = data.ipv4; ipv4El.style.color = 'var(--text-primary)'; }
+        else { ipv4El.textContent = '未获取到'; ipv4El.style.color = 'var(--text-secondary)'; }
+        if (data.ipv6) { ipv6El.textContent = data.ipv6; ipv6El.style.color = 'var(--text-primary)'; }
+        else { ipv6El.textContent = '未获取到'; ipv6El.style.color = 'var(--text-secondary)'; }
+    } catch (e) {
+        document.getElementById('public-ipv4').textContent = '加载失败';
+        document.getElementById('public-ipv6').textContent = '加载失败';
+    }
+}
+
+function copyIP(elementId) {
+    const text = document.getElementById(elementId).textContent;
+    if (text && text !== '检测中...' && text !== '未获取到' && text !== '加载失败') {
+        navigator.clipboard.writeText(text).then(() => {
+            const el = document.getElementById(elementId);
+            const orig = el.textContent;
+            el.textContent = '✅ 已复制';
+            setTimeout(() => { el.textContent = orig; }, 1500);
+        });
+    }
+}
+
+// 页面加载时自动加载 DNS 记录、图表和公网 IP
 document.addEventListener('DOMContentLoaded', function() {
     loadRecords();
     loadApiChart();
+    loadPublicIPs();
 });
 
 // 通用弹窗函数
