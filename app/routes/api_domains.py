@@ -522,6 +522,130 @@ async def api_update_dns_record(record_id: str, request: Request):
     return {"success": True}
 
 
+@router.put("/dns-record/{record_id}/edit-stream")
+async def api_update_dns_record_stream(record_id: str, request: Request):
+    """流式更新 DNS 记录（SSE，实时显示每步调试日志）"""
+    require_auth(request, _get_config(request))
+    body = await request.json()
+
+    required = ["type", "name", "content"]
+    for field in required:
+        if field not in body:
+            raise HTTPException(status_code=400, detail=f"缺少必填字段: {field}")
+
+    config = _reload_config(request)
+    record_type = body["type"]
+    name = body["name"]
+    content = body["content"]
+    ttl = int(body.get("ttl", 600))
+    line = body.get("line", "")
+
+    from fastapi.responses import StreamingResponse
+    import asyncio
+
+    async def event_stream():
+        start_time = asyncio.get_event_loop().time()
+
+        def send(step: str, status: str, msg: str):
+            nonlocal start_time
+            elapsed = int((asyncio.get_event_loop().time() - start_time) * 1000)
+            return f"data: {json.dumps({'step': step, 'status': status, 'message': msg, 'elapsed_ms': elapsed})}\n\n"
+
+        # 步骤1: 查询记录
+        yield send("query", "running", "查询 DNS 记录...")
+        await asyncio.sleep(0.1)
+
+        subdomain_id = None
+        domains = config.get("domains", [])
+        for d in domains:
+            subdomain_id = d.get("subdomain_id")
+            if subdomain_id:
+                break
+
+        if not subdomain_id:
+            yield send("query", "error", "无法获取 subdomain_id")
+            yield send("done", "error", "更新失败")
+            return
+
+        from app.core import list_all_dns_records, delete_dns_record as core_delete, api_request as core_api_request
+        records = list_all_dns_records(config, subdomain_id)
+        if not records:
+            yield send("query", "error", "查询记录失败")
+            yield send("done", "error", "更新失败")
+            return
+
+        matched = None
+        for r in records:
+            if r.get("record_id") == record_id:
+                matched = r
+                break
+
+        if matched is None:
+            yield send("query", "error", f"未找到匹配记录: record_id={record_id}")
+            yield send("done", "error", "更新失败")
+            return
+
+        num_id = matched.get("id")
+        cur_content = matched.get("content", "")
+        cur_ttl = matched.get("ttl", 600)
+        yield send("query", "ok", f"找到记录 id={num_id}, name={matched.get('name')}, content={cur_content}, ttl={cur_ttl}")
+
+        # 步骤2: 比较新旧值
+        if cur_content == content and int(cur_ttl) == ttl:
+            yield send("compare", "ok", "记录未变化，跳过更新")
+            yield send("done", "ok", "无需更新")
+            return
+
+        yield send("compare", "ok", f"记录已变化: {cur_content} → {content} (ttl={cur_ttl}→{ttl})，执行先删后建")
+
+        # 步骤3: 删除旧记录
+        if num_id:
+            yield send("delete", "running", f"删除旧记录 id={num_id}...")
+            await asyncio.sleep(0.1)
+            success_del = core_delete(config, record_id=str(num_id))
+            if success_del:
+                yield send("delete", "ok", f"删除旧记录成功: id={num_id}")
+            else:
+                yield send("delete", "warn", f"删除旧记录可能失败: id={num_id}，继续创建新记录")
+
+        # 步骤4: 创建新记录
+        yield send("create", "running", f"创建新记录: {name} → {content} (ttl={ttl})...")
+        await asyncio.sleep(0.1)
+        create_body = {
+            "subdomain_id": subdomain_id,
+            "type": record_type,
+            "name": name,
+            "content": content,
+            "ttl": ttl,
+        }
+        if line:
+            create_body["line"] = line
+        resp = core_api_request(config, endpoint="dns_records", action="create", method="POST", body=create_body)
+        if resp is not None:
+            new_id = resp.get("id")
+            yield send("create", "ok", f"创建新记录成功: id={new_id}")
+
+            # 步骤5: 刷新缓存
+            yield send("cache", "running", "刷新本地缓存...")
+            try:
+                fresh = list_all_dns_records(config, subdomain_id)
+                if fresh:
+                    from app.models import update_dns_records_cache
+                    update_dns_records_cache(fresh, subdomain_id)
+                yield send("cache", "ok", "本地缓存已更新")
+            except Exception as e:
+                yield send("cache", "warn", f"缓存更新失败: {e}")
+
+            # 记录日志
+            add_log(f"dns_{record_id}", name, "config_update", message=f"更新 DNS 记录: {name} → {content}")
+            yield send("done", "ok", "更新完成")
+        else:
+            yield send("create", "error", "创建新记录失败")
+            yield send("done", "error", "更新失败")
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.delete("/dns-record/{record_id}")
 async def api_delete_dns_record(record_id: str, request: Request):
     """删除 DNS 记录"""

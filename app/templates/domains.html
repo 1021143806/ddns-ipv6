@@ -151,6 +151,10 @@
                 <input type="checkbox" id="form-enabled" checked style="width:16px;height:16px;accent-color:var(--apple-blue);">
                 加入 DDNS 自动更新
             </label>
+            <div id="edit-debug-panel" style="display:none;margin-top:0.75rem;background:var(--input-bg);border:1px solid var(--card-border);border-radius:var(--radius-md);padding:0.6rem;max-height:200px;overflow-y:auto;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;">
+                <div style="font-weight:600;font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.3rem;">🔍 调试日志</div>
+                <div id="debug-log-entries"></div>
+            </div>
             <div style="display:flex;justify-content:flex-end;gap:0.6rem;padding-top:0.25rem;">
                 <button type="button" onclick="closeModal()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;">取消</button>
                 <button type="submit" class="mac-btn" style="font-size:0.85rem;">保存</button>
@@ -163,7 +167,7 @@
 <div id="nginx-modal" class="mac-modal-overlay hidden">
     <div class="mac-modal" style="max-width:560px;">
         <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:0.5rem;">🚀 Nginx 反向代理</h2>
-        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem;">快速生成并部署 Nginx 配置</p>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem;">快速生成并部署 Nginx 配置 · 当前 HTTPS 端口: <span id="nginx-port-display" style="font-weight:600;color:var(--apple-blue);">4443</span></p>
         <form id="nginx-form" style="display:flex;flex-direction:column;gap:1rem;">
             <div>
                 <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">域名 *</label>
@@ -748,9 +752,8 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     const btn = e.target.querySelector('button[type="submit"]');
 
     if (method === 'EDIT') {
-        // 编辑模式：调用 dnshe API 更新
+        // 编辑模式：使用 SSE 流式更新
         const recordId = document.getElementById('form-domain-id').value;
-        const recordNumId = parseInt(document.getElementById('form-domain-numid').value);
         const recordName = document.getElementById('form-record-name').value.trim();
         const subdomain = recordName.includes('.') ? recordName.split('.')[0] : recordName;
         const recordType = document.getElementById('form-record-type').value;
@@ -760,80 +763,94 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         const enabled = document.getElementById('form-enabled').checked;
         const checkInterval = document.getElementById('form-check-interval').value;
 
+        // 显示调试面板
+        const debugPanel = document.getElementById('edit-debug-panel');
+        const debugLog = document.getElementById('debug-log-entries');
+        debugPanel.style.display = 'block';
+        debugLog.innerHTML = '';
+        btn.disabled = true;
+        btn.textContent = '保存中...';
+
+        function addDebugLog(step, status, msg, elapsed) {
+            const icons = { running: '⏳', ok: '✅', warn: '⚠️', error: '❌' };
+            const colors = { running: 'var(--text-secondary)', ok: '#34c759', warn: '#ff9f0a', error: '#ff3b30' };
+            const div = document.createElement('div');
+            div.style.color = colors[status] || 'var(--text-secondary)';
+            div.innerHTML = `${icons[status] || '•'} ${msg} <span style="font-size:0.7rem;color:var(--text-secondary);">${elapsed}ms</span>`;
+            debugLog.appendChild(div);
+            debugPanel.scrollTop = debugPanel.scrollHeight;
+        }
+
         try {
-            // 1. 更新 DNS 记录
+            // 使用 EventSource 或 fetch SSE
             const updateBody = { type: recordType, name: subdomain, content: recordValue, ttl: ttl };
             if (line) updateBody.line = line;
-            const resp = await btnLoading(btn, '保存中', fetch(`/api/domains/dns-record/${recordId}`, {
+
+            const resp = await fetch(`/api/domains/dns-record/${recordId}/edit-stream`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updateBody),
-            }));
-            const data = await resp.json();
-            if (!resp.ok || !data.success) {
-                showModal(`
-                    <div class="mac-modal" style="max-width:480px;">
-                        <h2 style="font-size:1.1rem;font-weight:600;color:#ff3b30;margin-bottom:1rem;">❌ 更新失败</h2>
-                        <div style="background:rgba(255,59,48,0.08);border:1px solid rgba(255,59,48,0.2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
-                            <p style="color:var(--text-primary);font-size:0.9rem;">${data.detail || '未知错误（' + resp.status + '）'}</p>
-                        </div>
-                        <div style="display:flex;justify-content:flex-end;">
-                            <button onclick="this.closest('.mac-modal-overlay').remove()" class="mac-btn" style="font-size:0.85rem;">关闭</button>
-                        </div>
-                    </div>
-                `);
-                return;
-            }
+            });
 
-            // 2. 处理 DDNS 配置（recordName 是完整域名，用 subdomain 作为 id）
-            const isCurrentlyDDNS = !!ddnsMap[recordName];
-            if (enabled && !isCurrentlyDDNS) {
-                // 开启 DDNS
-                const ddnsResp = await fetch('/api/domains', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: subdomain,
-                        record_name: recordName,
-                        subdomain_id: 404037,
-                        record_type: recordType,
-                        ttl: ttl,
-                        enabled: true,
-                        check_interval: checkInterval ? parseInt(checkInterval) : undefined,
-                    }),
-                });
-                if (!ddnsResp.ok) {
-                    const ddnsErr = await ddnsResp.json();
-                    if (ddnsErr.detail && ddnsErr.detail.includes('已存在')) {
-                        // 已存在则跳过，不报错
-                    } else {
-                        console.warn('DDNS 添加失败:', ddnsErr.detail);
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let allSuccess = false;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            addDebugLog(data.step, data.status, data.message, data.elapsed_ms);
+                            if (data.step === 'done' && data.status === 'ok') {
+                                allSuccess = true;
+                            }
+                        } catch (e) {}
                     }
                 }
-            } else if (enabled && isCurrentlyDDNS) {
-                // 更新 DDNS 配置
-                await fetch(`/api/domains/${subdomain}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ttl: ttl,
-                        enabled: true,
-                        check_interval: checkInterval ? parseInt(checkInterval) : null,
-                    }),
-                });
-            } else if (!enabled && isCurrentlyDDNS) {
-                // 关闭 DDNS
-                await fetch(`/api/domains/${subdomain}`, {
-                    method: 'DELETE',
-                });
             }
 
-            closeModal();
-            // 先刷新缓存再重新加载列表
-            try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
-            loadRecords();
+            if (allSuccess) {
+                // 处理 DDNS 配置
+                const isCurrentlyDDNS = !!ddnsMap[recordName];
+                if (enabled && !isCurrentlyDDNS) {
+                    await fetch('/api/domains', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: subdomain, record_name: recordName, subdomain_id: 404037,
+                            record_type: recordType, ttl: ttl, enabled: true,
+                            check_interval: checkInterval ? parseInt(checkInterval) : undefined,
+                        }),
+                    });
+                } else if (enabled && isCurrentlyDDNS) {
+                    await fetch(`/api/domains/${subdomain}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ttl: ttl, enabled: true, check_interval: checkInterval ? parseInt(checkInterval) : null }),
+                    });
+                } else if (!enabled && isCurrentlyDDNS) {
+                    await fetch(`/api/domains/${subdomain}`, { method: 'DELETE' });
+                }
+
+                closeModal();
+                try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
+                loadRecords();
+            } else {
+                btn.disabled = false;
+                btn.textContent = '重试';
+            }
         } catch (err) {
-            showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
+            addDebugLog('error', 'error', '请求失败: ' + err.message, 0);
+            btn.disabled = false;
+            btn.textContent = '重试';
         }
         return;
     }
@@ -978,6 +995,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
 // ===== Nginx 配置 =====
 function showNginxModal(domain) {
     document.getElementById('nginx-domain').value = domain || '';
+    document.getElementById('nginx-port-display').textContent = httpsPort || 443;
     // 如果已有配置，读取 proxy_pass
     const existing = nginxMap[domain];
     document.getElementById('nginx-proxy-pass').value = existing && existing.proxy_passes.length > 0
