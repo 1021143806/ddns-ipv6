@@ -59,6 +59,16 @@
     </div>
 </div>
 
+<!-- 上次更新时间 + HTTPS 端口设置 -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:-0.75rem;margin-bottom:1rem;">
+    <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span style="font-size:0.78rem;color:var(--text-secondary);">HTTPS 端口:</span>
+        <input type="number" id="https-port-input" class="mac-input" style="width:80px;padding:0.25rem 0.5rem;font-size:0.8rem;" value="4443" min="1" max="65535">
+        <button onclick="saveHttpsPort()" id="btn-save-port" class="mac-btn" style="font-size:0.78rem;padding:0.25rem 0.7rem;">保存</button>
+    </div>
+    <span id="last-update-time" style="font-size:0.78rem;color:var(--text-secondary);">加载中...</span>
+</div>
+
 <!-- API 调用统计 + 折线图 -->
 <div class="mac-card mb-6" id="api-stats-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
@@ -265,10 +275,69 @@ async function loadPublicIPs() {
             ipv6El.textContent = '未获取到';
             ipv6El.style.color = 'var(--text-secondary)';
         }
+        updateLastUpdateTime(data.updated_at, data.avg_interval);
+        // 加载 HTTPS 端口配置
+        try {
+            const configResp = await fetch('/api/domains/config');
+            const configData = await configResp.json();
+            document.getElementById('https-port-input').value = configData.https_port || 443;
+            httpsPort = configData.https_port || 443;
+        } catch(e) {}
     } catch (e) {
         document.getElementById('public-ipv4').textContent = '加载失败';
         document.getElementById('public-ipv6').textContent = '加载失败';
     }
+}
+
+async function saveHttpsPort() {
+    const btn = document.getElementById('btn-save-port');
+    const port = parseInt(document.getElementById('https-port-input').value);
+    if (isNaN(port) || port < 1 || port > 65535) {
+        alert('端口号必须在 1-65535 之间');
+        return;
+    }
+    try {
+        const resp = await btnLoading(btn, '保存中', fetch('/api/domains/config/https-port', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ https_port: port }),
+        }));
+        const data = await resp.json();
+        if (data.success) {
+            httpsPort = port;
+        } else {
+            alert('保存失败: ' + (data.detail || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+function updateLastUpdateTime(isoTime, avgInterval) {
+    const el = document.getElementById('last-update-time');
+    if (!el) return;
+    let parts = [];
+    if (isoTime) {
+        const updated = new Date(isoTime);
+        const now = new Date();
+        const diffMs = now - updated;
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHour = Math.floor(diffMin / 60);
+        if (diffSec < 60) parts.push(`上次更新: ${diffSec} 秒前`);
+        else if (diffMin < 60) parts.push(`上次更新: ${diffMin} 分钟前`);
+        else if (diffHour < 24) parts.push(`上次更新: ${diffHour} 小时前`);
+        else parts.push(`上次更新: ${updated.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
+    } else {
+        parts.push('暂无更新记录');
+    }
+    if (avgInterval && avgInterval.avg_seconds !== null) {
+        const sec = avgInterval.avg_seconds;
+        if (sec < 60) parts.push(`平均间隔: ${sec} 秒`);
+        else if (sec < 3600) parts.push(`平均间隔: ${Math.round(sec / 60)} 分钟`);
+        else parts.push(`平均间隔: ${(sec / 3600).toFixed(1)} 小时`);
+    }
+    el.textContent = parts.join(' · ');
 }
 
 // 复制 IP

@@ -161,6 +161,7 @@
         }
     }
     document.addEventListener('DOMContentLoaded', function() {
+        loadHttpsPort();
         const icon = document.getElementById('theme-icon');
         if (icon) {
             if (document.documentElement.classList.contains('dark')) {
@@ -170,6 +171,19 @@
             }
         }
     });
+
+    // ===== 全局 HTTPS 端口配置 =====
+    let httpsPort = 443;
+
+    async function loadHttpsPort() {
+        try {
+            const resp = await fetch('/api/domains/config');
+            const data = await resp.json();
+            httpsPort = data.https_port || 443;
+        } catch (e) {
+            console.log('加载 HTTPS 端口配置失败:', e);
+        }
+    }
 
     // ===== 全局按钮加载动画工具 =====
     // 使用: await btnLoading(btn, '检查中', fetch('/api/...'))

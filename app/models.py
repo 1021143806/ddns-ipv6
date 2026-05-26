@@ -106,6 +106,46 @@ def get_logs(
     }
 
 
+def get_avg_update_interval() -> dict:
+    """计算 IP 变更的平均间隔时间
+
+    Returns:
+        {"avg_seconds": 平均间隔秒数, "count": 变更次数, "first_time": 首次变更时间, "last_time": 末次变更时间}
+        如果变更次数少于 2 次，返回 None
+    """
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT created_at FROM ddns_logs WHERE action IN ('create', 'update') ORDER BY id ASC"
+    ).fetchall()
+
+    if len(rows) < 2:
+        return {"avg_seconds": None, "count": len(rows), "first_time": None, "last_time": None}
+
+    times = []
+    for r in rows:
+        try:
+            t = datetime.fromisoformat(r["created_at"])
+            times.append(t)
+        except (ValueError, TypeError):
+            continue
+
+    if len(times) < 2:
+        return {"avg_seconds": None, "count": len(times), "first_time": None, "last_time": None}
+
+    intervals = []
+    for i in range(1, len(times)):
+        diff = (times[i] - times[i-1]).total_seconds()
+        intervals.append(diff)
+
+    avg_seconds = sum(intervals) / len(intervals)
+    return {
+        "avg_seconds": round(avg_seconds, 1),
+        "count": len(times),
+        "first_time": times[0].isoformat(),
+        "last_time": times[-1].isoformat(),
+    }
+
+
 def get_today_update_count() -> int:
     """获取今日更新次数"""
     conn = get_db()
