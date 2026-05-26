@@ -151,9 +151,13 @@
                 <input type="checkbox" id="form-enabled" checked style="width:16px;height:16px;accent-color:var(--apple-blue);">
                 加入 DDNS 自动更新
             </label>
-            <div id="edit-debug-panel" style="display:none;margin-top:0.75rem;background:var(--input-bg);border:1px solid var(--card-border);border-radius:var(--radius-md);padding:0.6rem;max-height:200px;overflow-y:auto;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;">
-                <div style="font-weight:600;font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.3rem;">🔍 调试日志</div>
-                <div id="debug-log-entries"></div>
+            <div id="edit-debug-panel" style="display:none;margin-top:0.5rem;">
+                <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.3rem;">
+                    <span style="font-size:0.75rem;color:var(--text-secondary);cursor:pointer;" onclick="toggleDebugLog()">▶ 🔍 查看详情</span>
+                </div>
+                <div id="debug-log-content" style="display:none;background:var(--input-bg);border:1px solid var(--card-border);border-radius:var(--radius-md);padding:0.6rem;max-height:180px;overflow-y:auto;font-family:'SF Mono',monospace;font-size:0.75rem;line-height:1.6;">
+                    <div id="debug-log-entries"></div>
+                </div>
             </div>
             <div style="display:flex;justify-content:flex-end;gap:0.6rem;padding-top:0.25rem;">
                 <button type="button" onclick="closeModal()" class="mac-btn mac-btn-secondary" style="font-size:0.85rem;">取消</button>
@@ -582,7 +586,13 @@ function showAddModal() {
 }
 
 function closeModal() {
+    console.log('[DEBUG] closeModal called, _pendingRefresh=', window._pendingRefresh);
     document.getElementById('domain-modal').classList.add('hidden');
+    if (window._pendingRefresh) {
+        console.log('[DEBUG] closeModal: triggering loadRecords');
+        window._pendingRefresh = false;
+        loadRecords();
+    }
 }
 
 document.getElementById('domain-form').addEventListener('submit', async (e) => {
@@ -742,6 +752,14 @@ function showEditRecordModal(recordId, name, type, content, ttl) {
     document.getElementById('form-line').value = '';
     document.getElementById('form-check-interval').value = isDDNS ? (ddnsMap[name].check_interval || '') : '';
     document.getElementById('form-enabled').checked = isDDNS;
+    // 重置按钮状态
+    const btn = document.querySelector('#domain-form button[type="submit"]');
+    btn.disabled = false;
+    btn.style.background = '';
+    btn.style.pointerEvents = '';
+    btn.textContent = '保存';
+    btn.classList.remove('btn-loading-success', 'btn-loading-error');
+    window._pendingRefresh = false;
     document.getElementById('domain-modal').classList.remove('hidden');
 }
 
@@ -752,7 +770,7 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     const btn = e.target.querySelector('button[type="submit"]');
 
     if (method === 'EDIT') {
-        // 编辑模式：使用 SSE 流式更新
+        console.log('[DEBUG] EDIT: 开始编辑');
         const recordId = document.getElementById('form-domain-id').value;
         const recordName = document.getElementById('form-record-name').value.trim();
         const subdomain = recordName.includes('.') ? recordName.split('.')[0] : recordName;
@@ -763,95 +781,65 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         const enabled = document.getElementById('form-enabled').checked;
         const checkInterval = document.getElementById('form-check-interval').value;
 
-        // 显示调试面板
-        const debugPanel = document.getElementById('edit-debug-panel');
-        const debugLog = document.getElementById('debug-log-entries');
-        debugPanel.style.display = 'block';
-        debugLog.innerHTML = '';
-        btn.disabled = true;
-        btn.textContent = '保存中...';
-
-        function addDebugLog(step, status, msg, elapsed) {
-            const icons = { running: '⏳', ok: '✅', warn: '⚠️', error: '❌' };
-            const colors = { running: 'var(--text-secondary)', ok: '#34c759', warn: '#ff9f0a', error: '#ff3b30' };
-            const div = document.createElement('div');
-            div.style.color = colors[status] || 'var(--text-secondary)';
-            div.innerHTML = `${icons[status] || '•'} ${msg} <span style="font-size:0.7rem;color:var(--text-secondary);">${elapsed}ms</span>`;
-            debugLog.appendChild(div);
-            debugPanel.scrollTop = debugPanel.scrollHeight;
-        }
+        console.log('[DEBUG] EDIT: stopImmediatePropagation');
+        e.stopImmediatePropagation();
 
         try {
-            // 使用 EventSource 或 fetch SSE
             const updateBody = { type: recordType, name: subdomain, content: recordValue, ttl: ttl };
             if (line) updateBody.line = line;
 
-            const resp = await fetch(`/api/domains/dns-record/${recordId}/edit-stream`, {
+            console.log('[DEBUG] EDIT: 调用 btnLoading');
+            const resp = await btnLoading(btn, '保存中', fetch(`/api/domains/dns-record/${recordId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updateBody),
-            });
+            }));
+            console.log('[DEBUG] EDIT: btnLoading 返回, status=' + resp.status);
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                console.log('[DEBUG] EDIT: 更新失败', data.detail);
+                showError('更新失败', data.detail || '未知错误');
+                return;
+            }
+            console.log('[DEBUG] EDIT: 更新成功');
 
-            const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let allSuccess = false;
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.substring(6));
-                            addDebugLog(data.step, data.status, data.message, data.elapsed_ms);
-                            if (data.step === 'done' && data.status === 'ok') {
-                                allSuccess = true;
-                            }
-                        } catch (e) {}
-                    }
-                }
+            // 处理 DDNS 配置
+            console.log('[DEBUG] EDIT: 处理 DDNS 配置, enabled=' + enabled + ', isCurrentlyDDNS=' + !!ddnsMap[recordName]);
+            const isCurrentlyDDNS = !!ddnsMap[recordName];
+            if (enabled && !isCurrentlyDDNS) {
+                console.log('[DEBUG] EDIT: 添加 DDNS');
+                await fetch('/api/domains', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: subdomain, record_name: recordName, subdomain_id: 404037,
+                        record_type: recordType, ttl: ttl, enabled: true,
+                        check_interval: checkInterval ? parseInt(checkInterval) : undefined,
+                    }),
+                });
+            } else if (enabled && isCurrentlyDDNS) {
+                console.log('[DEBUG] EDIT: 更新 DDNS');
+                await fetch(`/api/domains/${subdomain}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ttl: ttl, enabled: true, check_interval: checkInterval ? parseInt(checkInterval) : null }),
+                });
+            } else if (!enabled && isCurrentlyDDNS) {
+                console.log('[DEBUG] EDIT: 删除 DDNS');
+                await fetch(`/api/domains/${subdomain}`, { method: 'DELETE' });
             }
 
-            if (allSuccess) {
-                // 处理 DDNS 配置
-                const isCurrentlyDDNS = !!ddnsMap[recordName];
-                if (enabled && !isCurrentlyDDNS) {
-                    await fetch('/api/domains', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: subdomain, record_name: recordName, subdomain_id: 404037,
-                            record_type: recordType, ttl: ttl, enabled: true,
-                            check_interval: checkInterval ? parseInt(checkInterval) : undefined,
-                        }),
-                    });
-                } else if (enabled && isCurrentlyDDNS) {
-                    await fetch(`/api/domains/${subdomain}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ttl: ttl, enabled: true, check_interval: checkInterval ? parseInt(checkInterval) : null }),
-                    });
-                } else if (!enabled && isCurrentlyDDNS) {
-                    await fetch(`/api/domains/${subdomain}`, { method: 'DELETE' });
-                }
-
-                closeModal();
-                try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
-                loadRecords();
-            } else {
-                btn.disabled = false;
-                btn.textContent = '重试';
-            }
+            console.log('[DEBUG] EDIT: 刷新缓存');
+            try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
+            console.log('[DEBUG] EDIT: 完成，设置 _pendingRefresh=true');
+            btn.disabled = true;
+            btn.style.pointerEvents = 'none';
+            window._pendingRefresh = true;
         } catch (err) {
-            addDebugLog('error', 'error', '请求失败: ' + err.message, 0);
-            btn.disabled = false;
-            btn.textContent = '重试';
+            console.log('[DEBUG] EDIT: 异常', err.message);
+            showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
         }
+        console.log('[DEBUG] EDIT: return');
         return;
     }
 
@@ -941,6 +929,29 @@ async function deleteRecord(recordId, name) {
             alert('❌ 删除失败: ' + (data.detail || '未知错误'));
         }
     } catch (e) { showError('请求失败', e.message || '无法连接到服务器，请检查网络或刷新页面重试'); }
+}
+
+// ===== 调试日志折叠 =====
+function toggleDebugLog() {
+    const content = document.getElementById('debug-log-content');
+    const toggle = document.querySelector('#edit-debug-panel span');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        toggle.innerHTML = '▼ 🔍 查看详情';
+        // 渲染已缓存的日志
+        const log = document.getElementById('debug-log-entries');
+        log.innerHTML = '';
+        window._debugEntries.forEach(e => {
+            const div = document.createElement('div');
+            div.style.color = e.color;
+            div.innerHTML = `${e.icon} ${e.msg} <span style="font-size:0.7rem;color:var(--text-secondary);">${e.elapsed}ms</span>`;
+            log.appendChild(div);
+        });
+        content.scrollTop = content.scrollHeight;
+    } else {
+        content.style.display = 'none';
+        toggle.innerHTML = '▶ 🔍 查看详情';
+    }
 }
 
 // ===== 创建子域名 =====

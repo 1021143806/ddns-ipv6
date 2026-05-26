@@ -50,6 +50,7 @@ def save_config(config: dict) -> None:
     lines.append("\n[web]")
     lines.append(f'host = "{_escape_toml_string(web.get("host", "0.0.0.0"))}"')
     lines.append(f"port = {web.get('port', 5080)}")
+    lines.append(f"https_port = {web.get('https_port', 443)}")
     lines.append(f'username = "{_escape_toml_string(web.get("username", "admin"))}"')
     lines.append(f'password = "{_escape_toml_string(web.get("password", "admin123"))}"')
     lines.append(f'secret_key = "{_escape_toml_string(web.get("secret_key", ""))}"')

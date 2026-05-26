@@ -194,35 +194,20 @@
         btn.disabled = true;
         btn.classList.add('btn-loading');
 
-        const timerId = setInterval(() => {
-            const elapsed = Date.now() - startTime;
-            btn.innerHTML = `<span class="btn-loading-icon"></span> ${actionText}... (${elapsed.toLocaleString()}ms)`;
-        }, 100);
+        btn.innerHTML = `<span class="btn-loading-icon"></span> ${actionText}...`;
 
         try {
             const result = await fetchPromise;
-            clearInterval(timerId);
             const elapsed = Date.now() - startTime;
             btn.classList.remove('btn-loading');
             btn.classList.add('btn-loading-success');
             btn.innerHTML = `✅ ${actionText.replace('中', '完成')} (${elapsed.toLocaleString()}ms)`;
-            setTimeout(() => {
-                btn.textContent = origText;
-                btn.disabled = origDisabled;
-                btn.classList.remove('btn-loading-success');
-            }, 1500);
             return result;
         } catch (e) {
-            clearInterval(timerId);
             const elapsed = Date.now() - startTime;
             btn.classList.remove('btn-loading');
             btn.classList.add('btn-loading-error');
             btn.innerHTML = `❌ 失败 (${elapsed.toLocaleString()}ms)`;
-            setTimeout(() => {
-                btn.textContent = origText;
-                btn.disabled = origDisabled;
-                btn.classList.remove('btn-loading-error');
-            }, 2000);
             throw e;
         }
     }
