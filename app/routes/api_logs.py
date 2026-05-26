@@ -98,11 +98,41 @@ async def get_status(request: Request):
 
 @router.get("/stats/hourly")
 async def get_hourly_stats(request: Request, hours: int = Query(24, ge=1, le=72)):
-    """获取 API 调用按小时统计（用于折线图）"""
+    """获取 API 调用按小时统计（用于折线图），含 IP 变更标记"""
     require_auth(request, request.app.state.config)
+    from app.models import get_db
+    from datetime import datetime, timedelta
+
+    stats = get_hourly_api_stats(hours=hours)
+
+    # 查询 IP 变更时间点（按 new_ip 去重）
+    conn = get_db()
+    ip_changes = conn.execute(
+        """SELECT new_ip, created_at, action FROM ddns_logs
+           WHERE action IN ('create', 'update') AND new_ip IS NOT NULL
+           ORDER BY id ASC"""
+    ).fetchall()
+
+    # 按 new_ip 去重，记录首次出现时间
+    seen_ips = set()
+    change_events = []
+    for r in ip_changes:
+        ip = r["new_ip"]
+        if ip not in seen_ips:
+            seen_ips.add(ip)
+            created = r["created_at"]
+            # 判断是 IPv4 还是 IPv6
+            ip_type = "IPv4" if "." in ip else "IPv6"
+            change_events.append({
+                "time": created,
+                "ip": ip,
+                "type": ip_type,
+            })
+
     return {
-        "stats": get_hourly_api_stats(hours=hours),
+        "stats": stats,
         "current": get_api_rate_status(),
+        "ip_changes": change_events,
     }
 
 
