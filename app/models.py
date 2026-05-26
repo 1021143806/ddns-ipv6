@@ -107,7 +107,7 @@ def get_logs(
 
 
 def get_avg_update_interval() -> dict:
-    """计算 IP 变更的平均间隔时间
+    """计算 IP 地址变更的平均间隔时间（按 new_ip 去重，只统计真正的 IP 变化）
 
     Returns:
         {"avg_seconds": 平均间隔秒数, "count": 变更次数, "first_time": 首次变更时间, "last_time": 末次变更时间}
@@ -115,34 +115,36 @@ def get_avg_update_interval() -> dict:
     """
     conn = get_db()
     rows = conn.execute(
-        "SELECT created_at FROM ddns_logs WHERE action IN ('create', 'update') ORDER BY id ASC"
+        "SELECT new_ip, created_at FROM ddns_logs WHERE action IN ('create', 'update') AND new_ip IS NOT NULL ORDER BY id ASC"
     ).fetchall()
 
-    if len(rows) < 2:
-        return {"avg_seconds": None, "count": len(rows), "first_time": None, "last_time": None}
-
-    times = []
+    # 按 new_ip 去重，只保留第一次出现的时间（真正的 IP 变更）
+    seen_ips = set()
+    ip_change_times = []
     for r in rows:
-        try:
-            t = datetime.fromisoformat(r["created_at"])
-            times.append(t)
-        except (ValueError, TypeError):
-            continue
+        ip = r["new_ip"]
+        if ip not in seen_ips:
+            seen_ips.add(ip)
+            try:
+                t = datetime.fromisoformat(r["created_at"])
+                ip_change_times.append(t)
+            except (ValueError, TypeError):
+                continue
 
-    if len(times) < 2:
-        return {"avg_seconds": None, "count": len(times), "first_time": None, "last_time": None}
+    if len(ip_change_times) < 2:
+        return {"avg_seconds": None, "count": len(ip_change_times), "first_time": None, "last_time": None}
 
     intervals = []
-    for i in range(1, len(times)):
-        diff = (times[i] - times[i-1]).total_seconds()
+    for i in range(1, len(ip_change_times)):
+        diff = (ip_change_times[i] - ip_change_times[i-1]).total_seconds()
         intervals.append(diff)
 
     avg_seconds = sum(intervals) / len(intervals)
     return {
         "avg_seconds": round(avg_seconds, 1),
-        "count": len(times),
-        "first_time": times[0].isoformat(),
-        "last_time": times[-1].isoformat(),
+        "count": len(ip_change_times),
+        "first_time": ip_change_times[0].isoformat(),
+        "last_time": ip_change_times[-1].isoformat(),
     }
 
 

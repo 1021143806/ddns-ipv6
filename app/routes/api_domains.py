@@ -612,20 +612,57 @@ async def get_public_ips(request: Request):
     ipv6 = get_ipv6_address(interface)
     ipv4 = get_ipv4_address()
 
-    # 从域名状态中获取最近更新时间
+    # 分别获取 IPv4 和 IPv6 的最近更新时间和平均间隔
     from app.models import get_all_domain_status, get_avg_update_interval
     statuses = get_all_domain_status()
-    last_update = None
+
+    last_update_v4 = None
+    last_update_v6 = None
+    for s in statuses:
+        record_type = s.get("record_name", "")
+        is_v4 = any(d.get("record_type") == "A" for d in config.get("domains", []) if d.get("id") == s["domain_id"])
+        if s.get("last_update_at"):
+            try:
+                t = datetime.fromisoformat(s["last_update_at"])
+                if s.get("record_name", "").endswith(".ptrel.cc.cd"):
+                    # 根据域名配置判断类型
+                    for d in config.get("domains", []):
+                        if d.get("id") == s["domain_id"]:
+                            if d.get("record_type") == "A":
+                                if last_update_v4 is None or t > last_update_v4:
+                                    last_update_v4 = t
+                            else:
+                                if last_update_v6 is None or t > last_update_v6:
+                                    last_update_v6 = t
+                            break
+            except (ValueError, TypeError):
+                pass
+
+    # 更简单的判断：从域名状态表的 record_name 和配置关联
     for s in statuses:
         if s.get("last_update_at"):
             try:
                 t = datetime.fromisoformat(s["last_update_at"])
-                if last_update is None or t > last_update:
-                    last_update = t
+                domain_id = s["domain_id"]
+                for d in config.get("domains", []):
+                    if d.get("id") == domain_id:
+                        if d.get("record_type") == "A":
+                            if last_update_v4 is None or t > last_update_v4:
+                                last_update_v4 = t
+                        else:
+                            if last_update_v6 is None or t > last_update_v6:
+                                last_update_v6 = t
+                        break
             except (ValueError, TypeError):
                 pass
 
-    updated_at = last_update.isoformat() if last_update else None
+    updated_at_v4 = last_update_v4.isoformat() if last_update_v4 else None
+    updated_at_v6 = last_update_v6.isoformat() if last_update_v6 else None
     avg_interval = get_avg_update_interval()
 
-    return {"ipv4": ipv4, "ipv6": ipv6, "updated_at": updated_at, "avg_interval": avg_interval}
+    return {
+        "ipv4": ipv4, "ipv6": ipv6,
+        "updated_at_v4": updated_at_v4,
+        "updated_at_v6": updated_at_v6,
+        "avg_interval": avg_interval,
+    }

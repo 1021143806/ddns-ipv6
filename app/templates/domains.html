@@ -30,8 +30,8 @@
     </div>
 </div>
 
-<!-- 公网 IP 地址 -->
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6" id="public-ips-section">
+<!-- 公网 IP 地址 + HTTPS 端口设置 -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6" id="public-ips-section">
     <div class="mac-card">
         <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
             <span class="mac-badge" style="background:rgba(0,122,255,0.12);color:#007aff;font-size:0.75rem;padding:0.15rem 0.5rem;">IPv4</span>
@@ -41,6 +41,9 @@
         <div style="display:flex;align-items:center;gap:0.75rem;">
             <span id="public-ipv4" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">检测中...</span>
             <button onclick="copyIP('public-ipv4')" class="mac-link" style="font-size:0.78rem;text-decoration:none;" title="复制">📋</button>
+        </div>
+        <div style="margin-top:0.4rem;font-size:0.72rem;color:var(--text-secondary);">
+            <span id="ipv4-update-info"></span>
         </div>
     </div>
     <div class="mac-card">
@@ -53,17 +56,21 @@
             <span id="public-ipv6" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">检测中...</span>
             <button onclick="copyIP('public-ipv6')" class="mac-link" style="font-size:0.78rem;text-decoration:none;" title="复制">📋</button>
         </div>
+        <div style="margin-top:0.4rem;font-size:0.72rem;color:var(--text-secondary);">
+            <span id="ipv6-update-info"></span>
+        </div>
     </div>
-</div>
-
-<!-- 上次更新时间 + HTTPS 端口设置 -->
-<div style="display:flex;justify-content:space-between;align-items:center;margin-top:-0.75rem;margin-bottom:1rem;">
-    <div style="display:flex;align-items:center;gap:0.5rem;">
-        <span style="font-size:0.78rem;color:var(--text-secondary);">HTTPS 端口:</span>
-        <input type="number" id="https-port-input" class="mac-input" style="width:80px;padding:0.25rem 0.5rem;font-size:0.8rem;" value="4443" min="1" max="65535">
-        <button onclick="saveHttpsPort()" id="btn-save-port" class="mac-btn" style="font-size:0.78rem;padding:0.25rem 0.7rem;">保存</button>
+    <div class="mac-card">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+            <span class="mac-badge" style="background:rgba(255,159,10,0.12);color:#ff9f0a;font-size:0.75rem;padding:0.15rem 0.5rem;">🔒</span>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">HTTPS 端口</span>
+            <button onclick="showPortTip()" class="mac-link" style="font-size:0.78rem;text-decoration:none;margin-left:auto;" title="了解 HTTPS 端口配置">ℹ️</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+            <input type="number" id="https-port-input" class="mac-input" style="width:90px;padding:0.35rem 0.5rem;font-size:0.9rem;" value="4443" min="1" max="65535">
+            <button onclick="saveHttpsPort()" id="btn-save-port" class="mac-btn" style="font-size:0.82rem;padding:0.35rem 0.8rem;">保存</button>
+        </div>
     </div>
-    <span id="last-update-time" style="font-size:0.78rem;color:var(--text-secondary);">加载中...</span>
 </div>
 
 <!-- 全部 DNS 记录 -->
@@ -1027,8 +1034,9 @@ async function loadPublicIPs() {
         else { ipv4El.textContent = '未获取到'; ipv4El.style.color = 'var(--text-secondary)'; }
         if (data.ipv6) { ipv6El.textContent = data.ipv6; ipv6El.style.color = 'var(--text-primary)'; }
         else { ipv6El.textContent = '未获取到'; ipv6El.style.color = 'var(--text-secondary)'; }
-        // 更新"上次更新"时间和平均间隔
-        updateLastUpdateTime(data.updated_at, data.avg_interval);
+        // 更新各 IP 卡片的更新信息（IPv4 和 IPv6 分开）
+        updateIPInfo('ipv4', data.updated_at_v4, data.avg_interval);
+        updateIPInfo('ipv6', data.updated_at_v6, data.avg_interval);
         // 加载 HTTPS 端口配置
         try {
             const configResp = await fetch('/api/domains/config');
@@ -1042,8 +1050,8 @@ async function loadPublicIPs() {
     }
 }
 
-function updateLastUpdateTime(isoTime, avgInterval) {
-    const el = document.getElementById('last-update-time');
+function updateIPInfo(type, isoTime, avgInterval) {
+    const el = document.getElementById(type === 'ipv4' ? 'ipv4-update-info' : 'ipv6-update-info');
     if (!el) return;
     let parts = [];
     if (isoTime) {
@@ -1062,9 +1070,8 @@ function updateLastUpdateTime(isoTime, avgInterval) {
     }
     if (avgInterval && avgInterval.avg_seconds !== null) {
         const sec = avgInterval.avg_seconds;
-        if (sec < 60) parts.push(`平均间隔: ${sec} 秒`);
-        else if (sec < 3600) parts.push(`平均间隔: ${Math.round(sec / 60)} 分钟`);
-        else parts.push(`平均间隔: ${(sec / 3600).toFixed(1)} 小时`);
+        if (sec < 3600) parts.push(`平均 ${Math.round(sec / 60)} 分钟变更一次`);
+        else parts.push(`平均 ${(sec / 3600).toFixed(1)} 小时变更一次`);
     }
     el.textContent = parts.join(' · ');
 }

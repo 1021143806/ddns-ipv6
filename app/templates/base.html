@@ -227,6 +227,40 @@
         }
     }
 
+    // HTTPS 端口知识提示
+    function showPortTip() {
+        const existing = document.getElementById('ip-tip-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'ip-tip-modal';
+        modal.className = 'mac-modal-overlay';
+        modal.onclick = function(e) { if (e.target === this) this.remove(); };
+        modal.innerHTML = `
+            <div class="mac-modal" style="max-width:520px;max-height:80vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);">⚙️ HTTPS 端口配置</h2>
+                    <button onclick="document.getElementById('ip-tip-modal').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
+                </div>
+                <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                    <p><b>什么是 HTTPS 端口？</b></p>
+                    <p>HTTPS 默认端口是 443，但运营商通常会封禁家庭宽带的 443 端口。修改此端口可绕过限制。</p>
+                    <br>
+                    <p><b>修改后影响：</b></p>
+                    <p>• Nginx 配置生成时使用此端口</p>
+                    <p>• 域名管理页面的快速链接使用此端口</p>
+                    <p>• 80 端口重定向到 HTTPS 时使用此端口</p>
+                    <br>
+                    <p><b>注意：</b></p>
+                    <p>• 修改后需要手动更新 nginx 配置（在域名管理中重新生成配置）</p>
+                    <p>• 访问时需要手动指定端口，如 <code style="font-size:0.78rem;">https://ddns.ptrel.cc.cd:4443</code></p>
+                    <p>• 建议使用 4443、8443 等非常用端口</p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
     // IP 地址知识提示
     function showIPTip(type) {
         const existing = document.getElementById('ip-tip-modal');
