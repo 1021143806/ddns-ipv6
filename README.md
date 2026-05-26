@@ -80,10 +80,10 @@ ddns-ipv6/
 │       ├── api_docs.html           # API 文档页
 │       └── domains.html            # 域名管理（含调试日志面板）
 ├── config/
-│   ├── env.toml                    # 配置文件（已 .gitignore）
-│   ├── old/                        # 旧配置备份
+│   ├── env.toml                    # 启用的配置文件（从模板复制，已 .gitignore）
+│   ├── old/                        # 旧配置备份（升级时自动归档）
 │   └── template/
-│       └── env.template.toml       # 配置模板
+│       └── env.template.toml       # 配置模板（唯一编辑入口）
 ├── data/                           # SQLite 数据库（已 .gitignore）
 ├── doc/                            # 文档
 │   ├── api/README.md               # API 文档
@@ -93,19 +93,14 @@ ddns-ipv6/
 │   └── skill.md                    # 项目 skill 文件
 ├── test/
 │   └── test_ddns.py                # 测试脚本
-├── backup/
+├── backup/                         # 手动备份（非自动，需自行管理）
 ├── plans/
 │   └── webui-architecture.md       # 架构设计文档
-├── ddns_daemon.py                  # 后台守护进程
+├── ddns_daemon.py                  # 后台守护进程（双循环检测）
 ├── ddns.py                         # 旧版脚本（保留兼容）
 ├── ddns-ipv6.conf                  # Supervisor: 守护进程
 ├── ddns-ipv6-webui.conf            # Supervisor: WebUI
 ├── deploy.sh                       # 一键部署脚本
-├── test/
-│   └── test_ddns.py                # 测试脚本
-├── backup/
-├── plans/
-│   └── webui-architecture.md       # 架构设计文档
 ├── .gitignore
 └── README.md
 ```
@@ -178,6 +173,8 @@ tail -f /main/log/app/ddns-ipv6-webui.log  # WebUI 日志
 
 ## 配置说明
 
+> 配置文件唯一编辑入口为 [`config/template/env.template.toml`](config/template/env.template.toml)，部署时复制到 `config/env.toml` 后编辑。`config/old/` 目录用于升级时自动归档旧配置，`backup/` 目录用于手动备份（需自行管理）。
+
 ### Web 配置 `[web]`
 
 | 配置项 | 说明 | 默认值 |
@@ -187,6 +184,7 @@ tail -f /main/log/app/ddns-ipv6-webui.log  # WebUI 日志
 | `username` | 登录用户名 | `admin` |
 | `password` | 登录密码 | `admin123` |
 | `secret_key` | Session 签名密钥 | - |
+| `https_port` | HTTPS 端口（影响域名链接和 Nginx 配置） | `443` |
 
 ### API 配置 `[api]`
 
@@ -209,12 +207,6 @@ tail -f /main/log/app/ddns-ipv6-webui.log  # WebUI 日志
 |--------|------|--------|
 | `interface` | 网卡接口（留空自动检测） | `""` |
 
-### WebUI `[web]`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `https_port` | HTTPS 端口（影响域名链接和 Nginx 配置） | `443` |
-
 ### 域名配置 `[[domains]]`（可多个）
 
 | 配置项 | 说明 | 默认值 |
@@ -229,24 +221,27 @@ tail -f /main/log/app/ddns-ipv6-webui.log  # WebUI 日志
 
 ## 依赖
 
-### 守护进程
-- Python 3.11+ 标准库（`tomllib`, `subprocess`, `json`, `urllib`）
+### 运行时
+- **Python 3.11+** — 标准库（`tomllib`, `subprocess`, `json`, `urllib`）
+- **Supervisor** — 进程管理（守护进程 + WebUI 保活）
 
-### WebUI（新增）
-- `fastapi` - Web 框架
-- `uvicorn` - ASGI 服务器
-- `jinja2` - 模板引擎
-- `python-multipart` - 表单解析
-- `itsdangerous` - Session 签名
+### WebUI（Python 包）
+- `fastapi` — Web 框架
+- `uvicorn` — ASGI 服务器
+- `jinja2` — 模板引擎
+- `python-multipart` — 表单解析
+- `itsdangerous` — Session 签名
 
 ## 手动运行
 
 ```bash
 cd /main/app/github/ddns-ipv6
 
-# 守护进程
+# 守护进程（前台运行，Ctrl+C 停止）
 python3 ddns_daemon.py
 
-# WebUI（开发模式）
+# WebUI（开发模式，热重载）
 uvicorn app.webui:app --host 0.0.0.0 --port 5080 --reload
 ```
+
+> 生产环境建议使用 Supervisor 部署（参考 `ddns-ipv6.conf` 和 `ddns-ipv6-webui.conf`），`deploy.sh` 已集成一键部署流程。
