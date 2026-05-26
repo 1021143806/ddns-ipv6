@@ -597,6 +597,11 @@ function closeModal() {
 
 document.getElementById('domain-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    // 编辑模式由第二个 listener 处理，这里直接跳过
+    if (document.getElementById('form-method').value === 'EDIT') {
+        console.log('[DEBUG] 第一个 listener 跳过（编辑模式）');
+        return;
+    }
     const btn = e.target.querySelector('button[type="submit"]');
     const recordName = document.getElementById('form-record-name').value.trim();
     const subdomainId = parseInt(document.getElementById('form-subdomain-id').value);
@@ -832,8 +837,13 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             console.log('[DEBUG] EDIT: 刷新缓存');
             try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
             console.log('[DEBUG] EDIT: 完成，设置 _pendingRefresh=true');
-            btn.disabled = true;
-            btn.style.pointerEvents = 'none';
+            // 恢复按钮可点击状态（btnLoading 设置了 disabled=true）
+            btn.disabled = false;
+            btn.textContent = '✅ 保存完成';
+            btn.style.background = 'var(--apple-green, #34c759)';
+            btn.style.borderColor = 'var(--apple-green, #34c759)';
+            btn.style.color = '#fff';
+            btn.onclick = function() { closeModal(); };
             window._pendingRefresh = true;
         } catch (err) {
             console.log('[DEBUG] EDIT: 异常', err.message);
