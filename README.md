@@ -4,7 +4,7 @@
 
 定时检测本机 IPv6 地址变化，通过 [dnshe.com](https://dnshe.com) API 自动更新 AAAA 记录，实现 IPv6 动态域名解析。
 
-**v2.0 新增：现代化 WebUI 管理界面，支持多域名管理、远程添加解析。**
+**v2.1 新增：双循环检测架构、HTTPS 端口可配置、DNS 记录在线编辑、API 调用统计可视化。**
 
 ## 作者说
 
@@ -51,31 +51,51 @@ ipv6 的优势就是你不需要任何配置的情况只要能访问互联网的
 
 如何改为拨号模式：装宽带时直接要求使用拨号模式且需要宽带账号密码即可。如果已安装完，直接联系供应商远程修改为拨号模式。
 
+对了，也不是所有端口不限制，80 和 443 端口都是不开的，但是你可以使用 4443 端口。而且帮你们问了，开放 80 和 443 端口的宽带需要专线，办理价格参考：50兆上下行对称，带 ip 的最低 8000 一年。所以用 https://域名:4443 吧，只是多了一个冒号和4个数字而已。
+
+对于公网 ipv4 地址，算了吧，直接 ping 都不通了，想搞到一个固定的公网 ipv4 地址的难度还是不低的，当然，直接租云服务器自带。
+
+
+
 ## 项目结构
 
 ```
 ddns-ipv6/
 ├── app/                            # 应用代码
-│   ├── core.py                     # 核心逻辑：IPv6 检测 + API 调用
-│   ├── models.py                   # SQLite 数据层（日志 + 状态）
+│   ├── core.py                     # 核心逻辑：IPv6 检测 + API 调用 + 双循环检测
+│   ├── models.py                   # SQLite 数据层（日志 + 状态 + API 统计）
 │   ├── auth.py                     # 用户认证（Session）
 │   ├── webui.py                    # FastAPI Web 应用入口
 │   ├── routes/
-│   │   ├── api_domains.py          # 域名管理 REST API
+│   │   ├── api_domains.py          # 域名管理 REST API（DNS 记录 CRUD、Nginx 配置）
 │   │   ├── api_logs.py             # 日志查询 REST API
 │   │   └── pages.py                # 页面路由
 │   └── templates/                  # Jinja2 模板
-│       ├── base.html               # 基础布局
+│       ├── base.html               # 基础布局（全局按钮加载动画、HTTPS 端口、知识提示）
 │       ├── login.html              # 登录页
-│       ├── dashboard.html          # 仪表盘
-│       ├── domains.html            # 域名管理
-│       └── logs.html               # 操作日志
+│       ├── dashboard.html          # 仪表盘（状态概览、API 调用折线图）
+│       ├── domains.html            # 域名管理（DNS 记录列表、编辑/添加/删除、Nginx 配置）
+│       ├── dns_records.html        # DNS 记录查询页
+│       ├── logs.html               # 操作日志
+│       ├── api_docs.html           # API 文档页
+│       └── domains.html            # 域名管理（含调试日志面板）
 ├── config/
 │   ├── env.toml                    # 配置文件（已 .gitignore）
 │   ├── old/                        # 旧配置备份
 │   └── template/
 │       └── env.template.toml       # 配置模板
 ├── data/                           # SQLite 数据库（已 .gitignore）
+├── doc/                            # 文档
+│   ├── api/README.md               # API 文档
+│   ├── dnshe/api.md                # dnshe API 说明
+│   └── ssl/README.md               # SSL 证书申请指南
+├── skill/
+│   └── skill.md                    # 项目 skill 文件
+├── test/
+│   └── test_ddns.py                # 测试脚本
+├── backup/
+├── plans/
+│   └── webui-architecture.md       # 架构设计文档
 ├── ddns_daemon.py                  # 后台守护进程
 ├── ddns.py                         # 旧版脚本（保留兼容）
 ├── ddns-ipv6.conf                  # Supervisor: 守护进程
@@ -95,20 +115,29 @@ ddns-ipv6/
 ```
 Supervisor 管理进程:
   ┌─ ddns-ipv6 (ddns_daemon.py) ──────────────────────────┐
-  │  循环检测每个域名:                                      │
-  │    ├── ip -6 addr show 获取本机 IPv6                   │
-  │    ├── 调用 dnshe API 查询/创建/更新 AAAA 记录          │
-  │    ├── 自动清理脏数据（name 重复拼接的记录）             │
-  │    ├── 写入 SQLite 日志和状态                           │
-  │    └── sleep → 下一轮                                   │
+  │  双循环检测架构:                                        │
+  │    ├── 快速检测循环（10s 间隔）                          │
+  │    │    ├── ip -6 addr show 获取本机 IPv6               │
+  │    │    ├── 对比上次 IP，有变化则立即更新                │
+  │    │    └── sleep 10s → 下一轮                          │
+  │    ├── 全量同步循环（300s 间隔）                         │
+  │    │    ├── 遍历所有启用的域名                            │
+  │    │    ├── 调用 dnshe API 查询/创建/更新 AAAA 记录      │
+  │    │    ├── 自动清理脏数据（name 重复拼接的记录）         │
+  │    │    ├── 写入 SQLite 日志和状态                       │
+  │    │    └── sleep 300s → 下一轮                          │
+  │    └── 双循环协同：快速检测保证响应速度，全量同步保证一致性 │
   └────────────────────────────────────────────────────────┘
   ┌─ ddns-ipv6-webui (FastAPI :5080) ─────────────────────┐
   │  提供 Web 管理界面:                                     │
   │    ├── 登录认证                                         │
-  │    ├── 仪表盘（状态概览）                                │
-  │    ├── 域名增删改查                                     │
+  │    ├── 仪表盘（状态概览 + API 调用折线图）               │
+  │    ├── 域名管理（DNS 记录 CRUD + Nginx 配置）            │
   │    ├── 手动触发更新                                     │
-  │    └── 操作日志查看                                     │
+  │    ├── 操作日志查看                                     │
+  │    ├── DNS 记录查询                                     │
+  │    ├── HTTPS 端口可配置                                 │
+  │    └── 公网 IP 实时展示                                 │
   └────────────────────────────────────────────────────────┘
 ```
 
@@ -171,13 +200,20 @@ tail -f /main/log/app/ddns-ipv6-webui.log  # WebUI 日志
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `check_interval` | 全局检查间隔（秒） | `300` |
+| `check_interval` | 全量同步间隔（秒） | `300` |
+| `fast_check_interval` | 快速检测间隔（秒） | `10` |
 
 ### 网络 `[network]`
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `interface` | 网卡接口（留空自动检测） | `""` |
+
+### WebUI `[web]`
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `https_port` | HTTPS 端口（影响域名链接和 Nginx 配置） | `443` |
 
 ### 域名配置 `[[domains]]`（可多个）
 
