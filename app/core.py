@@ -100,6 +100,10 @@ def log(msg: str) -> str:
 def get_ipv6_address(interface: str = "") -> str | None:
     """获取本机 global dynamic IPv6 地址
 
+    优先选择 /128 固定后缀地址（noprefixroute），
+    其次选择临时地址（temporary dynamic），
+    最后选择 mngtmpaddr 地址。
+
     Args:
         interface: 网卡接口名，为空则自动检测
 
@@ -118,15 +122,36 @@ def get_ipv6_address(interface: str = "") -> str | None:
             return None
 
         lines = result.stdout.split("\n")
+        candidates = {"fixed": None, "temporary": None, "mngtmpaddr": None}
         for line in lines:
             line = line.strip()
-            if "scope global dynamic" in line and "mngtmpaddr" not in line:
-                parts = line.split()
-                for part in parts:
-                    if "/" in part and ":" in part:
-                        addr = part.split("/")[0]
-                        log(f"[INFO] 检测到 IPv6 地址: {addr}")
-                        return addr
+            if "scope global" not in line:
+                continue
+            parts = line.split()
+            addr_part = None
+            for part in parts:
+                if "/" in part and ":" in part:
+                    addr_part = part.split("/")[0]
+                    break
+            if not addr_part:
+                continue
+
+            if "temporary" in line:
+                if candidates["temporary"] is None:
+                    candidates["temporary"] = addr_part
+            elif "mngtmpaddr" in line:
+                if candidates["mngtmpaddr"] is None:
+                    candidates["mngtmpaddr"] = addr_part
+            else:
+                # noprefixroute 或其它，优先 /128 固定地址
+                if candidates["fixed"] is None:
+                    candidates["fixed"] = addr_part
+
+        # 按优先级选择
+        for key in ("fixed", "temporary", "mngtmpaddr"):
+            if candidates[key]:
+                log(f"[INFO] 检测到 IPv6 地址: {candidates[key]} (优先级: {key})")
+                return candidates[key]
 
         log("[WARN] 未找到 global dynamic IPv6 地址")
         return None
