@@ -395,7 +395,7 @@ async function loadApiChart() {
 
 // DDNS 监控域名列表（从服务端获取）
 const ddnsDomains = {{ domains | tojson }};
-const ddnsMap = {};
+let ddnsMap = {};
 ddnsDomains.forEach(d => { ddnsMap[d.record_name] = d; });
 
 // Nginx 配置映射
@@ -524,7 +524,7 @@ function renderRecords() {
     });
 }
 
-// ===== 加载全部 DNS 记录（从本地缓存） =====
+// ===== 加载全部数据（DNS 记录 + DDNS 映射 + Nginx 映射） =====
 async function loadRecords() {
     const loading = document.getElementById('records-loading');
     const content = document.getElementById('records-content');
@@ -535,12 +535,14 @@ async function loadRecords() {
     content.style.display = 'none';
 
     try {
-        const [recordsResp, nginxResp] = await Promise.all([
+        const [recordsResp, nginxResp, ddnsResp] = await Promise.all([
             fetch('/api/domains/dns-records'),
             fetch('/api/domains/nginx-configs'),
+            fetch('/api/domains'),
         ]);
         const recordsData = await recordsResp.json();
         const nginxData = await nginxResp.json();
+        const ddnsData = await ddnsResp.json();
         const records = recordsData.records || [];
 
         // 构建 Nginx 映射
@@ -550,6 +552,10 @@ async function loadRecords() {
                 nginxMap[name] = c;
             });
         });
+
+        // 构建 DDNS 映射
+        ddnsMap = {};
+        (ddnsData.domains || []).forEach(d => { ddnsMap[d.record_name] = d; });
 
         allRecords = records;
         renderRecords();
@@ -577,7 +583,11 @@ function showAddModal() {
     document.getElementById('form-record-name').value = '';
     document.getElementById('form-subdomain-id').value = '404037';
     document.getElementById('form-record-type').value = 'AAAA';
-    document.getElementById('form-record-value').value = '';
+    // 自动填入当前公网 IPv6 地址
+    const ipv6El = document.getElementById('public-ipv6');
+    const ipv6 = ipv6El && ipv6El.textContent !== '检测中...' && ipv6El.textContent !== '未获取到' && ipv6El.textContent !== '加载失败'
+        ? ipv6El.textContent : '';
+    document.getElementById('form-record-value').value = ipv6;
     document.getElementById('form-ttl').value = '600';
     document.getElementById('form-line').value = '';
     document.getElementById('form-check-interval').value = '';
@@ -669,9 +679,12 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             }
         }
 
-        closeModal();
+        // 刷新缓存
         try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
-        loadRecords();
+
+        // 自动刷新列表后关闭
+        await loadRecords();
+        closeModal();
     } catch (err) {
         let msg = '网络请求失败，请检查网络连接';
         if (err.message && err.message.includes('Failed to fetch')) {
@@ -709,7 +722,6 @@ async function checkDomain(domainId) {
     }
 }
 
-// ===== 开启 DDNS 监控 =====
 async function enableDDNS(name, recordId, subdomain) {
     if (!confirm(`确定要为 "${name}" 开启 DDNS 自动更新吗？`)) return;
     try {
@@ -727,10 +739,8 @@ async function enableDDNS(name, recordId, subdomain) {
         });
         const data = await resp.json();
         if (resp.ok) {
-            alert('✅ 已加入 DDNS 监控');
-            loadRecords();
+            loadRecords(); // 统一刷新所有数据（DDNS 映射 + Nginx 映射 + DNS 记录）
         } else if (resp.status === 400 && data.detail && data.detail.includes('已存在')) {
-            alert('⚠️ 该域名已在 DDNS 监控列表中，请刷新页面重试');
             loadRecords();
         } else {
             alert('❌ 开启失败: ' + (data.detail || '未知错误'));
@@ -836,15 +846,9 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
 
             console.log('[DEBUG] EDIT: 刷新缓存');
             try { await fetch('/api/domains/dns-records/refresh', { method: 'POST' }); } catch(e) {}
-            console.log('[DEBUG] EDIT: 完成，设置 _pendingRefresh=true');
-            // 恢复按钮可点击状态（btnLoading 设置了 disabled=true）
-            btn.disabled = false;
-            btn.textContent = '✅ 保存完成';
-            btn.style.background = 'var(--apple-green, #34c759)';
-            btn.style.borderColor = 'var(--apple-green, #34c759)';
-            btn.style.color = '#fff';
-            btn.onclick = function() { closeModal(); };
-            window._pendingRefresh = true;
+            console.log('[DEBUG] EDIT: 完成，自动刷新列表后关闭');
+            await loadRecords();
+            closeModal();
         } catch (err) {
             console.log('[DEBUG] EDIT: 异常', err.message);
             showError('请求失败', err.message || '无法连接到服务器，请检查网络或刷新页面重试');
@@ -1003,6 +1007,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
             document.getElementById('reg-result-msg').textContent =
                 `子域名 ${body.subdomain}.${body.rootdomain} 创建成功！子域名 ID: ${subdomainId}`;
             document.getElementById('reg-result').classList.remove('hidden');
+            loadRecords(); // 刷新 DNS 记录列表
         } else {
             document.getElementById('reg-error-msg').textContent = data.detail || '创建失败';
             document.getElementById('reg-error').classList.remove('hidden');
@@ -1056,6 +1061,7 @@ document.getElementById('nginx-form').addEventListener('submit', async (e) => {
                 `请执行: <code>sudo nginx -s reload</code><br><br>` +
                 `<details><summary>查看配置内容</summary><pre style="font-size:0.75rem;margin-top:0.5rem;overflow:auto;">${data.config.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></details>`;
             document.getElementById('nginx-result').classList.remove('hidden');
+            loadRecords(); // 刷新 Nginx 列状态
         } else {
             document.getElementById('nginx-error-msg').innerHTML =
                 `❌ ${data.detail || '生成失败'}<br><br>` +
@@ -1175,6 +1181,8 @@ document.addEventListener('DOMContentLoaded', function() {
     loadRecords();
     loadApiChart();
     loadPublicIPs();
+    // 定时刷新公网 IP（每 30 秒）
+    setInterval(loadPublicIPs, 30000);
 });
 
 // 通用弹窗函数

@@ -557,6 +557,17 @@ def register_subdomain(config: dict, subdomain: str, rootdomain: str) -> dict | 
     return resp
 
 
+def _refresh_dns_cache(config: dict, subdomain_id: int) -> None:
+    """刷新本地 DNS 记录缓存"""
+    try:
+        from app.models import update_dns_records_cache
+        fresh = list_all_dns_records(config, subdomain_id)
+        if fresh:
+            update_dns_records_cache(fresh, subdomain_id)
+    except Exception:
+        pass
+
+
 def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
     """对单个域名执行完整的检测+更新流程（自动清理脏数据）"""
     domain_id = domain_cfg.get("id", domain_cfg["record_name"])
@@ -645,6 +656,8 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
                 "new_ip": current_ip,
                 "message": f"创建 {record_type} 记录失败",
             }
+        # 刷新本地 DNS 记录缓存
+        _refresh_dns_cache(config, subdomain_id)
         return {
             "domain_id": domain_id,
             "record_name": record_name,
@@ -684,6 +697,8 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
                 "new_ip": current_ip,
                 "message": f"更新 {record_type} 记录失败",
             }
+        # 刷新本地 DNS 记录缓存
+        _refresh_dns_cache(config, subdomain_id)
         return {
             "domain_id": domain_id,
             "record_name": record_name,
