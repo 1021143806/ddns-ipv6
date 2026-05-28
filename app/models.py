@@ -321,6 +321,41 @@ def get_api_rate_status() -> dict:
 
 
 # ============================================================
+# 全量检查时间记录
+# ============================================================
+
+def save_last_full_check_time(timestamp: float) -> None:
+    """保存最近一次全量同步的时间戳"""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS daemon_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT OR REPLACE INTO daemon_state (key, value) VALUES (?, ?)",
+        ("last_full_check_time", str(timestamp)),
+    )
+    conn.commit()
+
+
+def get_last_full_check_time() -> float | None:
+    """获取最近一次全量同步的时间戳"""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT value FROM daemon_state WHERE key = ?",
+            ("last_full_check_time",),
+        ).fetchone()
+        if row:
+            return float(row["value"])
+    except Exception:
+        pass
+    return None
+
+
+# ============================================================
 # DNS 记录缓存（本地 SQLite，减少 dnshe API 调用）
 # ============================================================
 

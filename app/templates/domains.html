@@ -71,6 +71,19 @@
             <button onclick="saveHttpsPort()" id="btn-save-port" class="mac-btn" style="font-size:0.82rem;padding:0.35rem 0.8rem;">保存</button>
         </div>
     </div>
+    <!-- 全量检查倒计时 -->
+    <div class="mac-card">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+            <span class="mac-badge" style="background:rgba(175,82,222,0.12);color:#af52de;font-size:0.75rem;padding:0.15rem 0.5rem;">🔄</span>
+            <span style="font-size:0.82rem;color:var(--text-secondary);">全量同步</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+            <span id="full-check-countdown" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">加载中...</span>
+        </div>
+        <div style="margin-top:0.3rem;font-size:0.72rem;color:var(--text-secondary);">
+            <span id="full-check-info"></span>
+        </div>
+    </div>
 </div>
 
 <!-- 全部 DNS 记录 -->
@@ -1176,11 +1189,44 @@ function copyIP(elementId) {
     }
 }
 
+// ===== 全量检查倒计时（本地动态刷新） =====
+let _fullCheckRemaining = 0;
+let _fullCheckInterval = 300;
+async function loadFullCheckStatus() {
+    try {
+        const resp = await fetch('/api/domains/daemon/check-status');
+        const data = await resp.json();
+        _fullCheckRemaining = data.remaining;
+        _fullCheckInterval = data.interval;
+        document.getElementById('full-check-info').textContent = `每 ${_fullCheckInterval} 秒执行一次全量同步`;
+        updateFullCheckDisplay();
+    } catch (e) {
+        document.getElementById('full-check-countdown').textContent = '加载失败';
+    }
+}
+function updateFullCheckDisplay() {
+    const el = document.getElementById('full-check-countdown');
+    if (_fullCheckRemaining <= 0) {
+        el.textContent = '检查中...';
+    } else {
+        const min = Math.floor(_fullCheckRemaining / 60);
+        const sec = _fullCheckRemaining % 60;
+        el.textContent = `${min}:${String(sec).padStart(2, '0')}`;
+    }
+    _fullCheckRemaining--;
+    if (_fullCheckRemaining < 0) _fullCheckRemaining = 0;
+}
+
 // 页面加载时自动加载 DNS 记录、图表和公网 IP
 document.addEventListener('DOMContentLoaded', function() {
     loadRecords();
     loadApiChart();
     loadPublicIPs();
+    loadFullCheckStatus();
+    // 本地每秒刷新倒计时
+    setInterval(updateFullCheckDisplay, 1000);
+    // 每 30 秒从服务端同步一次倒计时（防止漂移）
+    setInterval(loadFullCheckStatus, 30000);
     // 定时刷新公网 IP（每 30 秒）
     setInterval(loadPublicIPs, 30000);
 });

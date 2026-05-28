@@ -1,5 +1,6 @@
 """域名管理 REST API"""
 
+import time
 from fastapi import APIRouter, Request, HTTPException
 from app.core import load_config, save_config, check_and_update_domain, register_subdomain, list_all_dns_records, update_dns_record, delete_dns_record
 from app.models import (
@@ -9,6 +10,7 @@ from app.models import (
     delete_domain_status,
     update_dns_records_cache,
     get_cached_dns_records,
+    get_last_full_check_time,
 )
 from app.auth import require_auth
 
@@ -721,6 +723,26 @@ async def set_https_port(request: Request):
 
     add_log("system", "system", "config_update", message=f"HTTPS 端口已修改为 {port}")
     return {"success": True, "https_port": port}
+
+
+@router.get("/daemon/check-status")
+async def get_daemon_check_status(request: Request):
+    """获取守护进程全量检查状态（下次检查倒计时）"""
+    require_auth(request, _get_config(request))
+    config = _reload_config(request)
+    full_check_interval = config.get("daemon", {}).get("check_interval", 300)
+    last_time = get_last_full_check_time()
+    now = time.time()
+    if last_time:
+        elapsed = now - last_time
+        remaining = max(0, full_check_interval - elapsed)
+    else:
+        remaining = 0
+    return {
+        "interval": full_check_interval,
+        "remaining": int(remaining),
+        "last_check_at": last_time,
+    }
 
 
 @router.get("/network/public-ips")

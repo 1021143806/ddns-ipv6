@@ -714,14 +714,20 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
             }
         success = update_record(config, domain_cfg, record_id, current_ip)
         if not success:
-            return {
-                "domain_id": domain_id,
-                "record_name": record_name,
-                "action": "error",
-                "old_ip": current_content,
-                "new_ip": current_ip,
-                "message": f"更新 {record_type} 记录失败",
-            }
+            # update 失败（dnshe API 已知问题），尝试先删后建
+            log(f"[WARN] update 失败，尝试先删后建: {record_name}")
+            delete_dns_record(config, record_id=str(record_id))
+            resp = create_record(config, domain_cfg, current_ip)
+            if resp is None:
+                return {
+                    "domain_id": domain_id,
+                    "record_name": record_name,
+                    "action": "error",
+                    "old_ip": current_content,
+                    "new_ip": current_ip,
+                    "message": f"更新 {record_type} 记录失败（先删后建也失败）",
+                }
+            log(f"[INFO] 先删后建成功: {record_name} → {current_ip}")
         # 刷新本地 DNS 记录缓存
         _refresh_dns_cache(config, subdomain_id)
         return {

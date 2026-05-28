@@ -78,6 +78,25 @@ def main() -> None:
     last_local_ipv6: str | None = None
     last_full_check_time = 0.0
 
+    # 启动时立即执行一次全量同步
+    log("[INFO] 启动时执行首次全量同步检查")
+    for domain_cfg in domains:
+        domain_id = domain_cfg.get("id", domain_cfg["record_name"])
+        if not domain_cfg.get("enabled", True):
+            continue
+        try:
+            result = check_and_update_domain(config, domain_cfg)
+            _handle_result(result, domain_id, last_ip_map)
+        except Exception as e:
+            log(f"[ERROR] 域名 {domain_cfg.get('record_name', '?')} 处理异常: {e}")
+            add_log(domain_id=domain_id, record_name=domain_cfg.get("record_name", ""),
+                    action="error", message=str(e))
+            upsert_domain_status(domain_id=domain_id,
+                                 record_name=domain_cfg.get("record_name", ""), status="error")
+    last_full_check_time = time.time()
+    from app.models import save_last_full_check_time
+    save_last_full_check_time(last_full_check_time)
+
     while True:
         try:
             # 热加载配置
@@ -122,6 +141,8 @@ def main() -> None:
             if now - last_full_check_time >= full_check_interval:
                 log(f"[INFO] 执行全量同步检查（间隔 {full_check_interval} 秒）")
                 last_full_check_time = now
+                from app.models import save_last_full_check_time
+                save_last_full_check_time(last_full_check_time)
 
                 for domain_cfg in domains:
                     domain_id = domain_cfg.get("id", domain_cfg["record_name"])
