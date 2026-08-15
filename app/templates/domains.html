@@ -71,17 +71,33 @@
             <button onclick="saveHttpsPort()" id="btn-save-port" class="mac-btn" style="font-size:0.82rem;padding:0.35rem 0.8rem;">保存</button>
         </div>
     </div>
-    <!-- 全量检查倒计时 -->
-    <div class="mac-card">
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
-            <span class="mac-badge" style="background:rgba(175,82,222,0.12);color:#af52de;font-size:0.75rem;padding:0.15rem 0.5rem;">🔄</span>
-            <span style="font-size:0.82rem;color:var(--text-secondary);">全量同步</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;">
-            <span id="full-check-countdown" style="font-family:'SF Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-primary);">加载中...</span>
-        </div>
-        <div style="margin-top:0.3rem;font-size:0.72rem;color:var(--text-secondary);">
-            <span id="full-check-info"></span>
+    <!-- 全量检查倒计时（环形进度条） -->
+    <div class="mac-card" style="display:flex;flex-direction:column;align-items:center;padding:1.5rem;">
+        <div style="display:flex;align-items:center;gap:1.5rem;width:100%;max-width:400px;">
+            <div style="position:relative;width:88px;height:88px;flex-shrink:0;">
+                <svg width="88" height="88" viewBox="0 0 88 88">
+                    <circle cx="44" cy="44" r="37" fill="none" stroke="var(--card-border)" stroke-width="6"/>
+                    <circle id="full-check-ring" cx="44" cy="44" r="37" fill="none" stroke="#af52de" stroke-width="6"
+                        stroke-linecap="round" stroke-dasharray="232.5" stroke-dashoffset="0"
+                        transform="rotate(-90 44 44)" style="transition: stroke-dashoffset 1s linear;"/>
+                </svg>
+                <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <span id="full-check-countdown" style="font-family:'SF Mono',monospace;font-size:1.15rem;font-weight:700;color:var(--text-primary);">--:--</span>
+                    <span style="font-size:0.6rem;color:var(--text-secondary);margin-top:1px;">剩余</span>
+                </div>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+                    <span style="font-size:0.82rem;font-weight:600;color:var(--text-primary);">🔄 全量同步</span>
+                    <button onclick="showFullCheckTip()" class="mac-link" style="font-size:0.72rem;text-decoration:none;margin-left:auto;" title="了解双循环检测架构">ℹ️</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1rem;font-size:0.75rem;color:var(--text-secondary);">
+                    <span>间隔</span><span style="text-align:right;font-weight:500;color:var(--text-primary);" id="full-check-interval">300s</span>
+                    <span>快速检测</span><span style="text-align:right;font-weight:500;color:var(--text-primary);" id="full-check-fast">10s</span>
+                    <span>上次同步</span><span style="text-align:right;font-weight:500;color:var(--text-primary);" id="full-check-last">--:--</span>
+                    <span>监控域名</span><span style="text-align:right;font-weight:500;color:var(--text-primary);" id="full-check-domains">--</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -121,11 +137,18 @@
             <input type="hidden" id="form-domain-id" value="">
             <input type="hidden" id="form-domain-numid" value="0">
             <div>
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">服务端</label>
+                <select id="form-provider" class="mac-input" onchange="onAddRecordProviderChange()">
+                    <option value="dnshe">dnshe（免费域名）</option>
+                    <option value="aliyun">阿里云云解析</option>
+                </select>
+            </div>
+            <div>
                 <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">域名 *</label>
-                <input type="text" id="form-record-name" class="mac-input" placeholder="ddns.ptrel.cc.cd" required>
+                <input type="text" id="form-record-name" class="mac-input" placeholder="ddns.ptrel.cc.cd / ipv6.ptrel.asia" required>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
-                <div>
+                <div id="form-subdomain-id-wrap">
                     <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">子域名 ID *</label>
                     <input type="number" id="form-subdomain-id" class="mac-input" placeholder="404037" required>
                 </div>
@@ -216,15 +239,38 @@
 <div id="register-modal" class="mac-modal-overlay hidden">
     <div class="mac-modal">
         <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:0.5rem;">✨ 创建子域名</h2>
-        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem;">通过 dnshe API 直接创建子域名，无需登录 dnshe 面板。</p>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1.25rem;" id="reg-desc">通过 dnshe API 直接创建子域名，无需登录面板。</p>
         <form id="register-form" style="display:flex;flex-direction:column;gap:1rem;">
             <div>
-                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">子域名前缀 *</label>
-                <input type="text" id="reg-subdomain" class="mac-input" placeholder="ddns" required>
+                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">服务端</label>
+                <select id="reg-provider" class="mac-input" onchange="onRegProviderChange()">
+                    <option value="dnshe">dnshe（免费域名，需注册子域名）</option>
+                    <option value="aliyun">阿里云云解析（直接创建 AAAA 记录）</option>
+                </select>
             </div>
-            <div>
-                <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">根域名 *</label>
-                <input type="text" id="reg-rootdomain" class="mac-input" placeholder="ptrel.cc.cd" required>
+            <div id="reg-dnshe-fields">
+                <div>
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">子域名前缀 *</label>
+                    <input type="text" id="reg-subdomain" class="mac-input" placeholder="ddns" required>
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">根域名 *</label>
+                    <input type="text" id="reg-rootdomain" class="mac-input" placeholder="ptrel.cc.cd" required>
+                </div>
+            </div>
+            <div id="reg-aliyun-fields" class="hidden">
+                <div>
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">主域名 *</label>
+                    <input type="text" id="reg-aliyun-main" class="mac-input" placeholder="ptrel.asia" required>
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">子域名前缀（RR）*</label>
+                    <input type="text" id="reg-aliyun-rr" class="mac-input" placeholder="test" required>
+                </div>
+                <div>
+                    <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.35rem;">记录值</label>
+                    <input type="text" id="reg-aliyun-value" class="mac-input" placeholder="留空自动用本机 IPv6">
+                </div>
             </div>
             <div id="reg-result" class="hidden">
                 <div style="background:rgba(52,199,89,0.12);border:1px solid rgba(52,199,89,0.3);color:#34c759;padding:0.75rem 1rem;border-radius:var(--radius-md);font-size:0.85rem;">
@@ -499,42 +545,144 @@ function renderRecords() {
     count.textContent = `(共 ${records.length} 条)`;
     tbody.innerHTML = '';
 
+    // 按域名分组，同一域名同时存在 A 与 AAAA 时合并为一行（双栈视图）
+    const groups = new Map();
     records.forEach(r => {
         const name = r.name || '-';
-        const type = r.type || '-';
-        const value = r.content || '-';
-        const ttl = r.ttl || '-';
-        const status = r.status || 'active';
-        const isDDNS = !!ddnsMap[name];
-        const isAAAA = type === 'AAAA';
-        const hasNginx = !!nginxMap[name];
-
-        let typeColor = 'var(--text-secondary)';
-        if (type === 'A') typeColor = '#007aff';
-        else if (type === 'AAAA') typeColor = '#34c759';
-        else if (type === 'TXT') typeColor = '#ff9f0a';
-        else if (type === 'CNAME') typeColor = '#af52de';
-
-        const recordId = r.record_id || '';
-        const subdomain = name.includes('.') ? name.split('.')[0] : name;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
-            <td>${isDDNS ? `<a href="https://${name}${httpsPort !== 443 ? ':' + httpsPort : ''}" target="_blank" rel="noopener" style="font-weight:500;color:var(--apple-blue);text-decoration:none;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name} ↗</a>` : `<span style="font-weight:500;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>`}</td>
-            <td><span class="mac-badge" style="background:${typeColor}15;color:${typeColor};">${type}</span></td>
-            <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${value}">${value}</td>
-            <td style="color:var(--text-secondary);font-size:0.82rem;">${ttl}s</td>
-            <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span></td>
-            <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
-            <td style="text-align:right;white-space:nowrap;">
-                ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
-                <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
-                <button onclick="showEditRecordModal('${recordId}', '${name}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
-                <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
-            </td>
-        `;
-        tbody.appendChild(tr);
+        if (!groups.has(name)) groups.set(name, []);
+        groups.get(name).push(r);
     });
+
+    groups.forEach((group, name) => {
+        const hasA = group.some(r => r.type === 'A');
+        const hasAAAA = group.some(r => r.type === 'AAAA');
+        if (hasA && hasAAAA) {
+            tbody.appendChild(buildStackRow(name, group));
+        } else {
+            group.forEach(r => tbody.appendChild(buildRecordRow(r)));
+        }
+    });
+}
+
+// ===== 单条 DNS 记录行（无 A/AAAA 双栈时使用） =====
+function buildRecordRow(r) {
+    const name = r.name || '-';
+    const type = r.type || '-';
+    const value = r.content || '-';
+    const ttl = r.ttl || '-';
+    const status = r.status || 'active';
+    const isDDNS = !!ddnsMap[name];
+    const isAAAA = type === 'AAAA';
+    const hasNginx = !!nginxMap[name];
+
+    let typeColor = 'var(--text-secondary)';
+    if (type === 'A') typeColor = '#007aff';
+    else if (type === 'AAAA') typeColor = '#34c759';
+    else if (type === 'TXT') typeColor = '#ff9f0a';
+    else if (type === 'CNAME') typeColor = '#af52de';
+
+    const recordId = r.record_id || '';
+    const subdomain = name.includes('.') ? name.split('.')[0] : name;
+    const checkTimeHtml = formatCheckTime(r, isDDNS);
+
+    // provider 徽章（dnshe / 阿里云）
+    const provider = r.provider || 'dnshe';
+    const providerBadge = provider === 'aliyun'
+        ? '<span class="mac-badge" style="background:rgba(255,159,10,0.12);color:#ff9f0a;font-size:0.62rem;margin-left:0.3rem;padding:0.05rem 0.35rem;">阿里云</span>'
+        : '<span class="mac-badge" style="background:rgba(128,128,128,0.12);color:var(--text-secondary);font-size:0.62rem;margin-left:0.3rem;padding:0.05rem 0.35rem;">dnshe</span>';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+        <td>${isDDNS ? `<a href="https://${name}${httpsPort !== 443 ? ':' + httpsPort : ''}" target="_blank" rel="noopener" style="font-weight:500;color:var(--apple-blue);text-decoration:none;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name} ↗</a>` : `<span style="font-weight:500;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>`}${providerBadge}</td>
+        <td><span class="mac-badge" style="background:${typeColor}15;color:${typeColor};">${type}</span></td>
+        <td style="font-family:'SF Mono',monospace;font-size:0.8rem;color:var(--text-secondary);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${value}">${value}</td>
+        <td style="color:var(--text-secondary);font-size:0.82rem;">${ttl}s</td>
+        <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span>${checkTimeHtml}</td>
+        <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+        <td style="text-align:right;white-space:nowrap;">
+            ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
+            <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
+            <button onclick="showEditRecordModal('${recordId}', '${name}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
+            <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
+        </td>
+    `;
+    return tr;
+}
+
+// ===== 双栈合并行：同一域名 A + AAAA 合并为一行展示 =====
+function buildStackRow(name, group) {
+    const aRec = group.find(r => r.type === 'A');
+    const aaaaRec = group.find(r => r.type === 'AAAA');
+    const isDDNS = !!ddnsMap[name];
+    const hasNginx = !!nginxMap[name];
+    const subdomain = name.includes('.') ? name.split('.')[0] : name;
+
+    // 记录值 + 各自操作（两行，A 在上、AAAA 在下）
+    const valueRows = [];
+    [aRec, aaaaRec].forEach(r => {
+        if (!r) return;
+        const type = r.type;
+        const value = r.content || '-';
+        const recordId = r.record_id || '';
+        const typeColor = type === 'A' ? '#007aff' : '#34c759';
+        const badge = `<span class="mac-badge" style="background:${typeColor}15;color:${typeColor};margin-right:0.4rem;">${type}</span>`;
+        const ops = `
+            <button onclick="showEditRecordModal('${recordId}', '${name}', '${type}', '${value.replace(/'/g, "\\'")}', ${r.ttl || 600})" class="mac-link" style="font-size:0.72rem;font-weight:500;margin-left:0.4rem;color:var(--text-secondary);">编辑</button>
+            <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.72rem;font-weight:500;margin-left:0.3rem;color:#ff3b30;">删除</button>
+        `;
+        valueRows.push(`<div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;min-width:0;">
+            <span style="display:flex;align-items:center;min-width:0;">
+                ${badge}
+                <span style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${value}">${value}</span>
+            </span>
+            <span style="white-space:nowrap;">${ops}</span>
+        </div>`);
+    });
+
+    // 状态列：任一记录 active 即绿点
+    const allActive = group.every(r => (r.status || 'active') === 'active');
+    const statusDot = `<span class="status-dot" style="background:${allActive ? '#34c759' : '#ff3b30'};"></span>`;
+
+    const tr = document.createElement('tr');
+    // provider 徽章（取组内第一条记录的 provider）
+    const provider = (group[0] && group[0].provider) || 'dnshe';
+    const providerBadge = provider === 'aliyun'
+        ? '<span class="mac-badge" style="background:rgba(255,159,10,0.12);color:#ff9f0a;font-size:0.62rem;margin-left:0.3rem;padding:0.05rem 0.35rem;">阿里云</span>'
+        : '<span class="mac-badge" style="background:rgba(128,128,128,0.12);color:var(--text-secondary);font-size:0.62rem;margin-left:0.3rem;padding:0.05rem 0.35rem;">dnshe</span>';
+
+    tr.innerHTML = `
+        <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+        <td>${isDDNS ? `<a href="https://${name}${httpsPort !== 443 ? ':' + httpsPort : ''}" target="_blank" rel="noopener" style="font-weight:500;color:var(--apple-blue);text-decoration:none;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name} ↗</a>` : `<span style="font-weight:500;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>`}${providerBadge}</td>
+        <td style="vertical-align:middle;">
+            <span class="mac-badge" style="background:rgba(0,122,255,0.12);color:#007aff;margin-right:0.3rem;">A</span>
+            <span class="mac-badge" style="background:rgba(52,199,89,0.12);color:#34c759;">AAAA</span>
+        </td>
+        <td style="padding:0.5rem 0.75rem;vertical-align:middle;">
+            ${valueRows.join('')}
+        </td>
+        <td style="color:var(--text-secondary);font-size:0.82rem;">${aRec?.ttl || aaaaRec?.ttl || '-'}s</td>
+        <td>${statusDot}</td>
+        <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
+        <td style="text-align:right;white-space:nowrap;">
+            ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : ''}
+            <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
+        </td>
+    `;
+    return tr;
+}
+
+// ===== 格式化最近检查时间（DDNS 监控中且存在检查记录时显示） =====
+function formatCheckTime(r, isDDNS) {
+    if (!isDDNS || !r.last_check_at) return '';
+    const d = new Date(r.last_check_at);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return '<span style="font-size:0.68rem;color:var(--text-secondary);margin-left:0.3rem;">刚刚</span>';
+    if (diffMin < 60) return `<span style="font-size:0.68rem;color:var(--text-secondary);margin-left:0.3rem;">${diffMin}分钟前</span>`;
+    if (diffMin < 1440) return `<span style="font-size:0.68rem;color:var(--text-secondary);margin-left:0.3rem;">${Math.floor(diffMin / 60)}小时前</span>`;
+    return `<span style="font-size:0.68rem;color:var(--text-secondary);margin-left:0.3rem;">${d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric' })}</span>`;
 }
 
 // ===== 加载全部数据（DNS 记录 + DDNS 映射 + Nginx 映射） =====
@@ -557,6 +705,17 @@ async function loadRecords() {
         const nginxData = await nginxResp.json();
         const ddnsData = await ddnsResp.json();
         const records = recordsData.records || [];
+
+        // 显示缓存更新时间
+        const cacheUpdated = recordsData.cache_updated_at;
+        const countEl = document.getElementById('record-count');
+        if (cacheUpdated) {
+            const d = new Date(cacheUpdated);
+            const timeStr = d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            countEl.textContent = `(共 ${records.length} 条 · 缓存 ${timeStr})`;
+        } else {
+            countEl.textContent = `(共 ${records.length} 条)`;
+        }
 
         // 构建 Nginx 映射
         nginxMap = {};
@@ -588,11 +747,27 @@ function onRecordTypeChange() {
     }
 }
 
+// ===== 添加记录服务端变更：阿里云无需子域名 ID =====
+function onAddRecordProviderChange() {
+    const provider = document.getElementById('form-provider').value;
+    const subdomainWrap = document.getElementById('form-subdomain-id-wrap');
+    const subdomainInput = document.getElementById('form-subdomain-id');
+    if (provider === 'aliyun') {
+        subdomainWrap.style.display = 'none';
+        subdomainInput.removeAttribute('required');
+    } else {
+        subdomainWrap.style.display = '';
+        subdomainInput.setAttribute('required', 'required');
+    }
+}
+
 // ===== 模态框 =====
 function showAddModal() {
     document.getElementById('modal-title').textContent = '添加 DNS 记录';
     document.getElementById('form-method').value = 'ADD';
     document.getElementById('form-domain-id').value = '';
+    document.getElementById('form-provider').value = 'dnshe';
+    onAddRecordProviderChange();
     document.getElementById('form-record-name').value = '';
     document.getElementById('form-subdomain-id').value = '404037';
     document.getElementById('form-record-type').value = 'AAAA';
@@ -634,16 +809,18 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
     const line = document.getElementById('form-line').value;
     const enabled = document.getElementById('form-enabled').checked;
     const checkInterval = document.getElementById('form-check-interval').value;
+    const provider = document.getElementById('form-provider').value;
 
     // 通过后端 API 代理创建 DNS 记录（避免 CORS 问题）
     try {
         const body = {
-            subdomain_id: subdomainId,
+            provider: provider,
             type: recordType,
-            name: recordName.split('.')[0],
+            name: provider === 'aliyun' ? recordName : recordName.split('.')[0],
             content: recordValue,
             ttl: ttl,
         };
+        if (provider === 'dnshe') body.subdomain_id = subdomainId;
         if (line) body.line = line;
         const resp = await btnLoading(btn, '创建中', fetch('/api/domains/dns-record/create', {
             method: 'POST',
@@ -669,18 +846,20 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
 
         // 如果勾选了 DDNS，添加到监控
         if (enabled) {
+            const ddnsBody = {
+                id: recordName.split('.')[0],
+                record_name: recordName,
+                subdomain_id: provider === 'aliyun' ? 0 : subdomainId,
+                record_type: recordType,
+                ttl: ttl,
+                enabled: true,
+                provider: provider,
+                check_interval: checkInterval ? parseInt(checkInterval) : undefined,
+            };
             const ddnsResp = await fetch('/api/domains', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: recordName.split('.')[0],
-                    record_name: recordName,
-                    subdomain_id: subdomainId,
-                    record_type: recordType,
-                    ttl: ttl,
-                    enabled: true,
-                    check_interval: checkInterval ? parseInt(checkInterval) : undefined,
-                }),
+                body: JSON.stringify(ddnsBody),
             });
             if (!ddnsResp.ok) {
                 const ddnsErr = await ddnsResp.json();
@@ -737,6 +916,7 @@ async function checkDomain(domainId) {
 
 async function enableDDNS(name, recordId, subdomain) {
     if (!confirm(`确定要为 "${name}" 开启 DDNS 自动更新吗？`)) return;
+    const prov = name.endsWith('.asia') || name.endsWith('.aliyuncs.com') ? 'aliyun' : 'dnshe';
     try {
         const resp = await fetch('/api/domains', {
             method: 'POST',
@@ -744,10 +924,11 @@ async function enableDDNS(name, recordId, subdomain) {
             body: JSON.stringify({
                 id: subdomain,
                 record_name: name,
-                subdomain_id: 404037,
+                subdomain_id: prov === 'aliyun' ? 0 : 404037,
                 record_type: 'AAAA',
                 ttl: 600,
                 enabled: true,
+                provider: prov,
             }),
         });
         const data = await resp.json();
@@ -777,6 +958,10 @@ function showEditRecordModal(recordId, name, type, content, ttl) {
     document.getElementById('form-record-type').value = type;
     document.getElementById('form-record-value').value = content;
     document.getElementById('form-ttl').value = ttl;
+    // 编辑时按记录名推断 provider（.asia 结尾视为阿里云）
+    const prov = name.endsWith('.asia') || name.endsWith('.aliyuncs.com') ? 'aliyun' : 'dnshe';
+    document.getElementById('form-provider').value = prov;
+    onAddRecordProviderChange();
     document.getElementById('form-line').value = '';
     document.getElementById('form-check-interval').value = isDDNS ? (ddnsMap[name].check_interval || '') : '';
     document.getElementById('form-enabled').checked = isDDNS;
@@ -808,12 +993,13 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
         const line = document.getElementById('form-line').value;
         const enabled = document.getElementById('form-enabled').checked;
         const checkInterval = document.getElementById('form-check-interval').value;
+        const editProvider = document.getElementById('form-provider').value;
 
         console.log('[DEBUG] EDIT: stopImmediatePropagation');
         e.stopImmediatePropagation();
 
         try {
-            const updateBody = { type: recordType, name: subdomain, content: recordValue, ttl: ttl };
+            const updateBody = { type: recordType, name: subdomain, content: recordValue, ttl: ttl, provider: editProvider };
             if (line) updateBody.line = line;
 
             console.log('[DEBUG] EDIT: 调用 btnLoading');
@@ -840,8 +1026,8 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        id: subdomain, record_name: recordName, subdomain_id: 404037,
-                        record_type: recordType, ttl: ttl, enabled: true,
+                        id: subdomain, record_name: recordName, subdomain_id: editProvider === 'aliyun' ? 0 : 404037,
+                        record_type: recordType, ttl: ttl, enabled: true, provider: editProvider,
                         check_interval: checkInterval ? parseInt(checkInterval) : undefined,
                     }),
                 });
@@ -982,9 +1168,30 @@ function toggleDebugLog() {
 }
 
 // ===== 创建子域名 =====
+function onRegProviderChange() {
+    const provider = document.getElementById('reg-provider').value;
+    const dnsheFields = document.getElementById('reg-dnshe-fields');
+    const aliyunFields = document.getElementById('reg-aliyun-fields');
+    const desc = document.getElementById('reg-desc');
+    if (provider === 'aliyun') {
+        dnsheFields.classList.add('hidden');
+        aliyunFields.classList.remove('hidden');
+        desc.textContent = '阿里云云解析为托管制：创建子域名即添加一条 AAAA 记录到主域名下。';
+    } else {
+        dnsheFields.classList.remove('hidden');
+        aliyunFields.classList.add('hidden');
+        desc.textContent = '通过 dnshe API 直接创建子域名，无需登录面板。';
+    }
+}
+
 function showRegisterModal() {
+    document.getElementById('reg-provider').value = 'dnshe';
+    onRegProviderChange();
     document.getElementById('reg-subdomain').value = '';
     document.getElementById('reg-rootdomain').value = 'ptrel.cc.cd';
+    document.getElementById('reg-aliyun-main').value = 'ptrel.asia';
+    document.getElementById('reg-aliyun-rr').value = '';
+    document.getElementById('reg-aliyun-value').value = '';
     document.getElementById('reg-result').classList.add('hidden');
     document.getElementById('reg-error').classList.add('hidden');
     document.getElementById('reg-submit-btn').disabled = false;
@@ -1002,10 +1209,25 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     document.getElementById('reg-result').classList.add('hidden');
     document.getElementById('reg-error').classList.add('hidden');
 
-    const body = {
-        subdomain: document.getElementById('reg-subdomain').value.trim(),
-        rootdomain: document.getElementById('reg-rootdomain').value.trim(),
-    };
+    const provider = document.getElementById('reg-provider').value;
+    let body = { provider };
+
+    if (provider === 'aliyun') {
+        const main = document.getElementById('reg-aliyun-main').value.trim();
+        const rr = document.getElementById('reg-aliyun-rr').value.trim();
+        const value = document.getElementById('reg-aliyun-value').value.trim();
+        if (!main || !rr) {
+            document.getElementById('reg-error-msg').textContent = '主域名和子域名前缀不能为空';
+            document.getElementById('reg-error').classList.remove('hidden');
+            return;
+        }
+        body.subdomain = rr;
+        body.rootdomain = main;
+        if (value) body.content = value;
+    } else {
+        body.subdomain = document.getElementById('reg-subdomain').value.trim();
+        body.rootdomain = document.getElementById('reg-rootdomain').value.trim();
+    }
 
     try {
         const resp = await btnLoading(btn, '创建中', fetch('/api/domains/register-subdomain', {
@@ -1016,9 +1238,16 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         const data = await resp.json();
         if (resp.ok) {
             const result = data.result;
-            const subdomainId = result.id || result.subdomain_id || '?';
-            document.getElementById('reg-result-msg').textContent =
-                `子域名 ${body.subdomain}.${body.rootdomain} 创建成功！子域名 ID: ${subdomainId}`;
+            const fullName = data.record_name || `${body.subdomain}.${body.rootdomain}`;
+            let msg = '';
+            if (provider === 'aliyun') {
+                const recordId = result.RecordId || '?';
+                msg = `阿里云记录 ${fullName} 创建成功！RecordId: ${recordId}`;
+            } else {
+                const subdomainId = result.id || result.subdomain_id || '?';
+                msg = `子域名 ${fullName} 创建成功！子域名 ID: ${subdomainId}`;
+            }
+            document.getElementById('reg-result-msg').textContent = msg;
             document.getElementById('reg-result').classList.remove('hidden');
             loadRecords(); // 刷新 DNS 记录列表
         } else {
@@ -1189,29 +1418,79 @@ function copyIP(elementId) {
     }
 }
 
-// ===== 全量检查倒计时（本地动态刷新） =====
+// ===== 全量同步知识提示 =====
+function showFullCheckTip() {
+    const existing = document.getElementById('ip-tip-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'ip-tip-modal';
+    modal.className = 'mac-modal-overlay';
+    modal.onclick = function(e) { if (e.target === this) this.remove(); };
+    modal.innerHTML = `
+        <div class="mac-modal" style="max-width:520px;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h2 style="font-size:1.1rem;font-weight:600;color:var(--text-primary);">🔄 双循环检测架构</h2>
+                <button onclick="document.getElementById('ip-tip-modal').remove()" class="mac-btn mac-btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.8rem;">关闭</button>
+            </div>
+            <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7;">
+                <p><b>什么是双循环检测？</b></p>
+                <p>守护进程采用"快速检测 + 全量同步"的双循环架构，兼顾响应速度和数据一致性。</p>
+                <br>
+                <p><b>快速检测循环</b></p>
+                <p>• 每 10 秒检测一次本机 IPv6 地址是否变化</p>
+                <p>• 仅执行 <code style="font-size:0.78rem;">ip -6 addr show</code>，不调用 API</p>
+                <p>• 检测到变化时立即更新远端 DNS 记录</p>
+                <br>
+                <p><b>全量同步循环</b></p>
+                <p>• 每 300 秒执行一次完整的检测+更新流程</p>
+                <p>• 查询 dnshe API 获取当前记录，与本机地址对比</p>
+                <p>• 自动清理脏数据（如重复拼接的域名）</p>
+                <p>• 确保远端记录与本机一致（兜底机制）</p>
+                <br>
+                <p><b>为什么需要双循环？</b></p>
+                <p>• 快速检测保证 IP 变化后秒级响应</p>
+                <p>• 全量同步兜底，防止快速检测遗漏或 API 更新失败</p>
+                <p>• 两者协同，既快又稳</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+// ===== 全量检查倒计时（环形进度条 + 本地动态刷新） =====
 let _fullCheckRemaining = 0;
 let _fullCheckInterval = 300;
+const _ringCircumference = 2 * Math.PI * 30; // r=30 → ~188.5
 async function loadFullCheckStatus() {
     try {
         const resp = await fetch('/api/domains/daemon/check-status');
         const data = await resp.json();
         _fullCheckRemaining = data.remaining;
         _fullCheckInterval = data.interval;
-        document.getElementById('full-check-info').textContent = `每 ${_fullCheckInterval} 秒执行一次全量同步`;
+        document.getElementById('full-check-interval').textContent = `${data.interval}s`;
+        document.getElementById('full-check-fast').textContent = `${data.fast_interval || 10}s`;
+        document.getElementById('full-check-last').textContent = data.last_check_str || '--:--';
+        document.getElementById('full-check-domains').textContent = `${data.enabled_count || 0} 个`;
         updateFullCheckDisplay();
     } catch (e) {
-        document.getElementById('full-check-countdown').textContent = '加载失败';
+        document.getElementById('full-check-countdown').textContent = '--:--';
     }
 }
 function updateFullCheckDisplay() {
     const el = document.getElementById('full-check-countdown');
+    const ring = document.getElementById('full-check-ring');
     if (_fullCheckRemaining <= 0) {
-        el.textContent = '检查中...';
+        el.textContent = '检查中';
+        if (ring) ring.style.strokeDashoffset = '0';
     } else {
         const min = Math.floor(_fullCheckRemaining / 60);
         const sec = _fullCheckRemaining % 60;
         el.textContent = `${min}:${String(sec).padStart(2, '0')}`;
+        // 更新环形进度：剩余比例
+        const progress = _fullCheckRemaining / _fullCheckInterval;
+        const offset = _ringCircumference * (1 - progress);
+        if (ring) ring.style.strokeDashoffset = String(offset);
     }
     _fullCheckRemaining--;
     if (_fullCheckRemaining < 0) _fullCheckRemaining = 0;

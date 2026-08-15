@@ -62,10 +62,19 @@ def save_config(config: dict) -> None:
     lines.append(f'api_key = "{_escape_toml_string(api.get("api_key", ""))}"')
     lines.append(f'api_secret = "{_escape_toml_string(api.get("api_secret", ""))}"')
 
+    # [aliyun]
+    aliyun_cfg = config.get("aliyun", {})
+    if aliyun_cfg:
+        lines.append("\n# 阿里云云解析凭据（provider = \"aliyun\" 的域名使用）")
+        lines.append("[aliyun]")
+        lines.append(f'access_key_id = "{_escape_toml_string(aliyun_cfg.get("access_key_id", ""))}"')
+        lines.append(f'access_key_secret = "{_escape_toml_string(aliyun_cfg.get("access_key_secret", ""))}"')
+
     # [daemon]
     daemon = config.get("daemon", {})
     lines.append("\n[daemon]")
     lines.append(f"check_interval = {daemon.get('check_interval', 300)}")
+    lines.append(f"force_full_interval = {daemon.get('force_full_interval', 1800)}")
 
     # [network]
     network = config.get("network", {})
@@ -76,6 +85,8 @@ def save_config(config: dict) -> None:
     for domain in config.get("domains", []):
         lines.append("\n[[domains]]")
         lines.append(f'id = "{_escape_toml_string(domain.get("id", ""))}"')
+        if "provider" in domain and domain.get("provider") != "dnshe":
+            lines.append(f'provider = "{_escape_toml_string(domain.get("provider", "dnshe"))}"')
         lines.append(f"subdomain_id = {domain.get('subdomain_id', 0)}")
         lines.append(f'record_name = "{_escape_toml_string(domain.get("record_name", ""))}"')
         lines.append(f'record_type = "{_escape_toml_string(domain.get("record_type", "AAAA"))}"')
@@ -594,7 +605,20 @@ def _refresh_dns_cache(config: dict, subdomain_id: int) -> None:
 
 
 def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
-    """对单个域名执行完整的检测+更新流程（自动清理脏数据）"""
+    """对单个域名执行完整的检测+更新流程（自动清理脏数据）
+
+    支持多 provider：domain_cfg["provider"] 为 "aliyun" 时走阿里云云解析，
+    缺省或 "dnshe" 走原有 dnshe 流程。
+    """
+    provider = domain_cfg.get("provider", "dnshe")
+    if provider == "aliyun":
+        return _check_and_update_domain_aliyun(config, domain_cfg)
+
+    return _check_and_update_domain_dnshe(config, domain_cfg)
+
+
+def _check_and_update_domain_dnshe(config: dict, domain_cfg: dict) -> dict:
+    """原有 dnshe provider 的检测+更新流程（未改动）"""
     domain_id = domain_cfg.get("id", domain_cfg["record_name"])
     record_name = domain_cfg["record_name"]
     full_name = domain_cfg["record_name"]
@@ -738,3 +762,144 @@ def check_and_update_domain(config: dict, domain_cfg: dict) -> dict:
             "new_ip": current_ip,
             "message": f"更新成功: {current_content} → {current_ip}",
         }
+
+
+def _check_and_update_domain_aliyun(config: dict, domain_cfg: dict) -> dict:
+    """阿里云云解析 provider 的检测+更新流程
+
+    与 dnshe 流程对齐，但：
+    - 凭据取自 config["aliyun"]（access_key_id / access_key_secret）
+    - 记录名自动拆分为 RR + 主域（如 ipv6.ptrel.asia → RR=ipv6, 域=ptrel.asia）
+    - 阿里云 UpdateDomainRecord 可直接用（无需先删后建）
+    """
+    import app.aliyun_dns as aliyun
+
+    domain_id = domain_cfg.get("id", domain_cfg["record_name"])
+    record_name = domain_cfg["record_name"]
+    record_type = domain_cfg.get("record_type", "AAAA")
+
+    aliyun_cfg = config.get("aliyun", {})
+    ak_id = aliyun_cfg.get("access_key_id", "")
+    ak_secret = aliyun_cfg.get("access_key_secret", "")
+    if not ak_id or not ak_secret:
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": None,
+            "new_ip": None,
+            "message": "未配置阿里云 AccessKey（config [aliyun] 段）",
+        }
+
+    # 1. 根据记录类型获取本机 IP
+    if record_type == "A":
+        current_ip = get_ipv4_address()
+        ip_type = "IPv4"
+    else:
+        interface = config.get("network", {}).get("interface", "")
+        current_ip = get_ipv6_address(interface)
+        ip_type = "IPv6"
+
+    if current_ip is None:
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": None,
+            "new_ip": None,
+            "message": f"无法获取本机 {ip_type} 地址",
+        }
+
+    # 2. 拆分主域（阿里云按主域管理记录）
+    rr, main_domain = aliyun.split_domain(record_name)
+
+    # 3. 查询当前记录
+    try:
+        current_record = aliyun.get_record(
+            ak_id, ak_secret, main_domain, record_name, record_type
+        )
+    except aliyun.AliyunDNSError as e:
+        log(f"[ERROR] 阿里云查询记录失败: {e}")
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": None,
+            "new_ip": current_ip,
+            "message": f"阿里云查询记录失败: {e}",
+        }
+
+    # 4. 创建或更新
+    if current_record is None:
+        # 没有记录，创建
+        try:
+            aliyun.create_record(
+                ak_id, ak_secret, main_domain, record_name, record_type, current_ip,
+                ttl=domain_cfg.get("ttl", 600),
+            )
+        except aliyun.AliyunDNSError as e:
+            log(f"[ERROR] 阿里云创建 {record_type} 记录失败: {e}")
+            return {
+                "domain_id": domain_id,
+                "record_name": record_name,
+                "action": "error",
+                "old_ip": None,
+                "new_ip": current_ip,
+                "message": f"阿里云创建 {record_type} 记录失败: {e}",
+            }
+        log(f"[INFO] [aliyun] 创建 {record_type} 记录成功: {record_name} → {current_ip}")
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "create",
+            "old_ip": None,
+            "new_ip": current_ip,
+            "message": f"创建成功: {current_ip}",
+        }
+
+    current_content = current_record.get("content", "")
+    if current_content == current_ip:
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "skip",
+            "old_ip": current_content,
+            "new_ip": current_ip,
+            "message": "地址未变化，跳过更新",
+        }
+
+    # 记录存在且内容不同 → 更新（阿里云 UpdateDomainRecord 可用）
+    record_id = current_record.get("id")
+    if not record_id:
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": current_content,
+            "new_ip": current_ip,
+            "message": "阿里云记录 ID 缺失，无法更新",
+        }
+    try:
+        aliyun.update_record(
+            ak_id, ak_secret, record_id, main_domain, rr, record_type, current_ip,
+            ttl=domain_cfg.get("ttl", 600),
+        )
+    except aliyun.AliyunDNSError as e:
+        log(f"[ERROR] 阿里云更新 {record_type} 记录失败: {e}")
+        return {
+            "domain_id": domain_id,
+            "record_name": record_name,
+            "action": "error",
+            "old_ip": current_content,
+            "new_ip": current_ip,
+            "message": f"阿里云更新 {record_type} 记录失败: {e}",
+        }
+    log(f"[INFO] [aliyun] 更新 {record_type} 记录成功: {record_name} {current_content} → {current_ip}")
+    return {
+        "domain_id": domain_id,
+        "record_name": record_name,
+        "action": "update",
+        "old_ip": current_content,
+        "new_ip": current_ip,
+        "message": f"更新成功: {current_content} → {current_ip}",
+    }

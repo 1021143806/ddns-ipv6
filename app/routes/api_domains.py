@@ -2,7 +2,7 @@
 
 import time
 from fastapi import APIRouter, Request, HTTPException
-from app.core import load_config, save_config, check_and_update_domain, register_subdomain, list_all_dns_records, update_dns_record, delete_dns_record
+from app.core import load_config, save_config, check_and_update_domain, register_subdomain, list_all_dns_records, update_dns_record, delete_dns_record, log
 from app.models import (
     add_log,
     upsert_domain_status,
@@ -45,6 +45,7 @@ async def list_domains(request: Request):
             "id": domain_id,
             "record_name": d["record_name"],
             "record_type": d.get("record_type", "AAAA"),
+            "provider": d.get("provider", "dnshe"),
             "subdomain_id": d.get("subdomain_id", 0),
             "ttl": d.get("ttl", 600),
             "enabled": d.get("enabled", True),
@@ -59,29 +60,57 @@ async def list_domains(request: Request):
 
 @router.get("/dns-records")
 async def api_list_dns_records(request: Request):
-    """获取 DNS 记录（优先从本地缓存读取）"""
+    """获取 DNS 记录（优先从本地缓存读取，合并 dnshe + 阿里云）"""
     require_auth(request, _get_config(request))
-
-    # 从本地缓存读取
-    cached = get_cached_dns_records()
-    if cached:
-        return {"records": cached, "total": len(cached), "from_cache": True}
-
-    # 缓存为空时尝试从 dnshe API 拉取
     config = _reload_config(request)
-    domains = config.get("domains", [])
-    all_records = []
-    seen_ids = set()
-    for d in domains:
-        subdomain_id = d.get("subdomain_id")
-        if subdomain_id and subdomain_id not in seen_ids:
-            seen_ids.add(subdomain_id)
-            records = list_all_dns_records(config, subdomain_id)
-            if records:
-                all_records.extend(records)
-                update_dns_records_cache(records, subdomain_id)
 
-    return {"records": all_records, "total": len(all_records), "from_cache": False}
+    # 从本地缓存读取 dnshe 记录
+    cached = get_cached_dns_records()
+    records = []
+    cache_updated_at = None
+    if cached:
+        cache_updated_at = max((r.get("updated_at", "") for r in cached), default=None)
+        # 合并 DDNS 状态（最近检查时间）
+        status_map = {s["record_name"]: s for s in get_all_domain_status()}
+        for r in cached:
+            rec = dict(r)
+            rec["provider"] = "dnshe"
+            name = r.get("name", "")
+            st = status_map.get(name)
+            if st:
+                rec["last_check_at"] = st.get("last_check_at")
+                rec["last_update_at"] = st.get("last_update_at")
+            else:
+                rec["last_check_at"] = None
+                rec["last_update_at"] = None
+            records.append(rec)
+
+    # 合并阿里云记录（实时从 OpenAPI 拉取，标注 provider=aliyun）
+    import app.aliyun_dns as aliyun
+    aliyun_cfg = config.get("aliyun", {})
+    ak_id = aliyun_cfg.get("access_key_id", "")
+    ak_secret = aliyun_cfg.get("access_key_secret", "")
+    aliyun_domains = {d["record_name"] for d in config.get("domains", [])
+                      if d.get("provider") == "aliyun"}
+    if ak_id and ak_secret:
+        # 按主域去重拉取（同一主域下多条 RR 一次拉全）
+        seen_main = set()
+        for record_name in aliyun_domains:
+            rr, main_domain = aliyun.split_domain(record_name)
+            if main_domain in seen_main:
+                continue
+            seen_main.add(main_domain)
+            try:
+                for rec in aliyun.list_records(ak_id, ak_secret, main_domain):
+                    rec["provider"] = "aliyun"
+                    rec["last_check_at"] = None
+                    rec["last_update_at"] = None
+                    records.append(rec)
+            except aliyun.AliyunDNSError as e:
+                log(f"[ERROR] 阿里云拉取记录失败 {main_domain}: {e}")
+
+    return {"records": records, "total": len(records),
+            "from_cache": bool(cached), "cache_updated_at": cache_updated_at}
 
 
 @router.post("/dns-records/refresh")
@@ -107,22 +136,54 @@ async def api_refresh_dns_records(request: Request):
 
 @router.post("/register-subdomain")
 async def api_register_subdomain(request: Request):
-    """通过 dnshe API 注册子域名"""
+    """创建子域名
+
+    provider = "dnshe"  → 调用 dnshe subdomains/register（注册新子域名）
+    provider = "aliyun" → 阿里云无"注册子域名"，等价于直接添加一条 RR 记录
+                         （name=ipv6.ptrel.asia，type=AAAA，content=IP）
+    """
     require_auth(request, _get_config(request))
     body = await request.json()
 
+    config = _reload_config(request)
+    provider = body.get("provider", "dnshe")
+
+    if provider == "aliyun":
+        # 阿里云：创建子域名 = 添加一条 AAAA 记录（如 ipv6.ptrel.asia）
+        if "subdomain" not in body or "rootdomain" not in body:
+            raise HTTPException(status_code=400, detail=f"缺少必填字段: subdomain/rootdomain")
+        import app.aliyun_dns as aliyun
+        aliyun_cfg = config.get("aliyun", {})
+        ak_id = aliyun_cfg.get("access_key_id", "")
+        ak_secret = aliyun_cfg.get("access_key_secret", "")
+        if not ak_id or not ak_secret:
+            raise HTTPException(status_code=400, detail="未配置阿里云 AccessKey")
+        record_name = f"{body['subdomain']}.{body['rootdomain']}"
+        rr, main_domain = aliyun.split_domain(record_name)
+        try:
+            # 自动获取本机 IPv6 作为 AAAA 记录值
+            from app.core import get_ipv6_address
+            ipv6 = get_ipv6_address(config.get("network", {}).get("interface", ""))
+            resp = aliyun.create_record(
+                ak_id, ak_secret, main_domain, record_name, "AAAA",
+                ipv6 or "240e::1", ttl=600,
+            )
+        except aliyun.AliyunDNSError as e:
+            raise HTTPException(status_code=400, detail=f"阿里云创建记录失败: {e}")
+        return {"success": True, "result": resp, "provider": "aliyun", "record_name": record_name}
+
+    # dnshe 分支（原有逻辑）
     required = ["subdomain", "rootdomain"]
     for field in required:
         if field not in body:
             raise HTTPException(status_code=400, detail=f"缺少必填字段: {field}")
 
-    config = _reload_config(request)
     resp = register_subdomain(config, body["subdomain"], body["rootdomain"])
 
     if resp is None:
         raise HTTPException(status_code=500, detail="注册子域名失败，请检查 API 密钥和域名信息")
 
-    return {"success": True, "result": resp}
+    return {"success": True, "result": resp, "provider": "dnshe"}
 
 
 @router.post("")
@@ -149,6 +210,7 @@ async def add_domain(request: Request):
 
     new_domain = {
         "id": domain_id,
+        "provider": body.get("provider", "dnshe"),
         "subdomain_id": int(body["subdomain_id"]),
         "record_name": body["record_name"],
         "record_type": body.get("record_type", "AAAA"),
@@ -459,16 +521,42 @@ async def generate_nginx_config(request: Request):
 
 @router.post("/dns-record/create")
 async def api_create_dns_record(request: Request):
-    """通过后端代理创建 DNS 记录（避免前端 CORS 问题）"""
+    """通过后端代理创建 DNS 记录（避免前端 CORS 问题）
+
+    支持 provider：aliyun 走阿里云 OpenAPI，缺省/dnshe 走 dnshe API
+    """
     require_auth(request, _get_config(request))
     body = await request.json()
 
-    required = ["subdomain_id", "type", "name", "content"]
+    required = ["type", "name", "content"]
     for field in required:
         if field not in body:
             raise HTTPException(status_code=400, detail=f"缺少必填字段: {field}")
 
     config = _reload_config(request)
+    provider = body.get("provider", "dnshe")
+
+    if provider == "aliyun":
+        # 阿里云：name 为完整记录名（如 ipv6.ptrel.asia），自动拆分 RR 与主域
+        import app.aliyun_dns as aliyun
+        aliyun_cfg = config.get("aliyun", {})
+        ak_id = aliyun_cfg.get("access_key_id", "")
+        ak_secret = aliyun_cfg.get("access_key_secret", "")
+        if not ak_id or not ak_secret:
+            raise HTTPException(status_code=400, detail="未配置阿里云 AccessKey")
+        rr, main_domain = aliyun.split_domain(body["name"])
+        try:
+            resp = aliyun.create_record(
+                ak_id, ak_secret, main_domain, body["name"], body["type"],
+                body["content"], ttl=int(body.get("ttl", 600)),
+            )
+        except aliyun.AliyunDNSError as e:
+            raise HTTPException(status_code=400, detail=f"阿里云创建失败: {e}")
+        return {"success": True, "result": resp, "provider": "aliyun"}
+
+    # dnshe 分支（原有逻辑）
+    if "subdomain_id" not in body:
+        raise HTTPException(status_code=400, detail=f"缺少必填字段: subdomain_id")
 
     from app.core import api_request as core_api_request
     create_body = {
@@ -491,7 +579,7 @@ async def api_create_dns_record(request: Request):
     if resp is None:
         raise HTTPException(status_code=429, detail="dnshe API 请求被拒绝（可能触发了速率限制），请等待一分钟后再试")
 
-    return {"success": True, "result": resp}
+    return {"success": True, "result": resp, "provider": "dnshe"}
 
 
 @router.put("/dns-record/{record_id}")
@@ -730,7 +818,9 @@ async def get_daemon_check_status(request: Request):
     """获取守护进程全量检查状态（下次检查倒计时）"""
     require_auth(request, _get_config(request))
     config = _reload_config(request)
-    full_check_interval = config.get("daemon", {}).get("check_interval", 300)
+    daemon_cfg = config.get("daemon", {})
+    full_check_interval = daemon_cfg.get("check_interval", 300)
+    fast_check_interval = daemon_cfg.get("fast_check_interval", 10)
     last_time = get_last_full_check_time()
     now = time.time()
     if last_time:
@@ -738,10 +828,22 @@ async def get_daemon_check_status(request: Request):
         remaining = max(0, full_check_interval - elapsed)
     else:
         remaining = 0
+    # 启用的域名数
+    domains = config.get("domains", [])
+    enabled_count = sum(1 for d in domains if d.get("enabled", True))
+    # 格式化上次同步时间
+    last_check_str = None
+    if last_time:
+        from datetime import datetime
+        last_check_str = datetime.fromtimestamp(last_time).strftime("%H:%M:%S")
     return {
         "interval": full_check_interval,
+        "fast_interval": fast_check_interval,
         "remaining": int(remaining),
         "last_check_at": last_time,
+        "last_check_str": last_check_str,
+        "domain_count": len(domains),
+        "enabled_count": enabled_count,
     }
 
 
