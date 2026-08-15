@@ -76,6 +76,16 @@ config/env.toml
 - gitea 配置 `/main/app/gitea/config/app.ini`：DOMAIN/ROOT_URL/SSH_DOMAIN 已改为 `git.ptrel.asia`
 - frp：`gitea3103`（本地 3103 → 公网 53103）、`giteaSSH2222`（本地 2222 → 公网 52222）
 - 访问：`https://git.ptrel.asia`（Web）、SSH 克隆 `git@git.ptrel.asia:52222:a1/repo.git`（或 :2222 内网）
+
+**postsup.ptrel.asia（PostSup，2026-08-15 部署）**
+- PostSup = supervisor 管理平台（Go 单二进制，项目 `/main/app/github/postsup`）
+- A 记录 → 47.98.244.173（手动，勿加 DDNS）；证书 `/etc/nginx/ssl/postsup_ptrel_asia_fullchain.crt`
+- nginx `postsup-ptrel-asia.conf`：443 → `127.0.0.1:55014`（frp `postsup5014`：本地 5014 → 公网 55014）
+- supervisor：`/main/server/supervisor/conf.d/postsup.conf`，程序 `postsup`
+- ⚠️ 端口从默认 5013 改 **5014**（5013 被 supervisor-webui 占用）；supervisor_dir 改本机 `/main/server/supervisor/conf.d/`
+- 账号：admin / 🔒（密码见 `skill/secret.md`，配置在 `config/ops.toml` `[account.users]`）
+- 访问：`https://postsup.ptrel.asia`；构建：`go build -o bin/psupd ./cmd/psupd`（需代理拉依赖）
+- 登录 API：`POST /api/login`（`{"username","password"}` → `{"ok":true}`）
 - ⚠️ gitea 是 HTTPS 服务，nginx 反代必须 `proxy_pass https://` + `proxy_ssl_verify off`；若用 http 反代会 400
 
 > 注意：`ptrel.cc.cd` 的 NS 在 dnshe（免费域名，无法迁到阿里云），阿里云只能管理 `ptrel.asia` 等托管在阿里云云解析的域名。
@@ -437,6 +447,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (PostSup 部署): postsup.ptrel.asia 部署完成。⚠️ 坑：① 5013 被 supervisor-webui 占用→改 5014 ② supervisor_dir 改本机路径 ③ go build 需代理（GOPROXY=goproxy.cn）。frp 隧道 postsup5014(55014)。完整链路 https://postsup.ptrel.asia 验证通过。
 - 2026-08-15 (HTTP/2禁用): 阿里云 nginx **全局禁用 HTTP/2**（6 个 conf 共 10 处 `listen 443/8443 ssl http2` → `listen ... ssl`），因 Rikka Hub(okhttp) 与 HTTP/2+反代连接复用有偶发 `Connection reset` 兼容问题。HTTP/1.1 高频 20/20 稳定。备份在 `/etc/nginx/backup/20260815_http2/`。ALPN 不再协商 h2。⚠️ 后续新增反代配置**不要带 http2**。
 - 2026-08-15 (napcat30 恢复): napcat30 容器 8/14 被 SIGKILL(137) 后未自动拉起（restart=unless-stopped 失效），`docker start` 恢复。napcat27/25 按需移除（`docker stop && rm`）。清理失效 nginx 配置 `napcat_na`/`napcat_hilda`（下划线旧域名，dnshe 已改连字符，无 DNS 记录）→ 备份至 `/etc/nginx/conf.d/old_20260815/`。⚠️ **WebUI 访问坑**：napcat WebUI 是 HTTP 服务，frp 隧道(56128→6128)是 TCP 纯隧道，**必须用 `http://47.98.244.173:56128/webui/` 访问**，用 https 会握手失败(Connection reset)。本机 nginx 443/4443 已有大量 `conflicting server name`/`protocol options redefined` 警告（mcphub.conf 与 mcphub.ptrel.cc.cd.conf 等重复），待清理。
 - 2026-08-15 (gitea): git.ptrel.asia 阿里云 HTTPS 完成。⚠️ 坑：gitea 自身 PROTOCOL=https，nginx 反代必须 `proxy_pass https://` + `proxy_ssl_verify off`，用 http 会 400。gitea DOMAIN/ROOT_URL/SSH_DOMAIN 已切到新域名。
