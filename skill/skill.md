@@ -242,6 +242,14 @@ curl -sk -o /dev/null -w "%{http_code}\n" https://域名/
 - **ddns.ptrel.cc.cd**：DDNS AAAA + 通配符证书 + nginx 443→5080
 - **dsh.ptrel.cc.cd**：A 记录 47.98.244.173 + nginx 443→53080→frp→本机3080
 
+### ⚠️ ant2api 区域限制修复记录（2026-08-15）
+- **现象**：ant2api 调用返回 `400 User location is not supported for the API use`（FAILED_PRECONDITION）
+- **根因**：ant2api 上游 `daily-cloudcode-pa.sandbox.googleapis.com`（Cloud Code 内部 API）按**出口 IP 地区**判定，而 mihomo 默认节点（日本高级 IEPL 专线 2 等）出口被 Google 标记为不支持区域
+- **排查过程**：本地直连/公网端口/域名 HTTPS 全链路都通（403/401 是上游拒绝），逐个节点测试才定位到节点 IP 问题
+- **修复**：mihomo 新增 `ant2api-SG` 分组（`filter: 新加坡高级 IEPL 专线 3`）+ rules 加 `DOMAIN-SUFFIX,googleapis.com,ant2api-SG` → Cloud Code API 走新加坡节点
+- **可用节点实测**：`🇸🇬 新加坡高级 IEPL 专线 3`（3/3 稳定）✅；`🇯🇵 日本实验性 IEPL 专线 1`（2/3 不稳定）
+- **教训**：Google 系 API 的区域限制是**节点 IP 级**，不是账号级；换节点即可解决，无需动 ant2api/账号
+
 ### 常见坑
 - frp 隧道端口必须 5 位数（如 58045），避免与公网常见端口冲突
 - 阿里云 nginx 反代目标 = **frp 公网端口**（127.0.0.1:58xxx），不是本机原始端口
@@ -421,6 +429,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (ant2api 修复): Cloud Code API 区域限制问题修复。mihomo 新增 ant2api-SG 分组强制走新加坡节点 + googleapis.com 域名规则。✅ 域名调用恢复。
 - 2026-08-15 (newapi 双实例): newapi.ptrel.asia + newapi2.ptrel.asia 走通阿里云 HTTPS 方案（A 记录 + acme DNS 证书 + nginx 443 反代 frp 端口）。容器/frp 隧道未动，仅新增域名访问层。访问 https://newapi.ptrel.asia / https://newapi2.ptrel.asia
 - 2026-08-15 (ant.ptrel.asia): Antigravity 2 API 域名访问配置完成。A 记录(手动,47.98.244.173) + acme.sh DNS 验证证书(自动续期至 2026-10-13) + 阿里云 nginx 443 反代 58045(frp→本机8045)。访问 https://ant.ptrel.asia。⚠️ 该 A 记录指向阿里云固定 IP，勿加 DDNS（会覆盖成本机 NAT IP）。
 - 2026-08-15 (安全事件): GitHub push protection 拦截——AccessKey 曾误写入 doc/aliyun.md 和 skill/skill.md（被 git 跟踪），已 `git reset --soft` 回退、清除密钥、重新提交推送。**教训：任何密钥只进 config/env.toml 与 skill/secret.md（gitignore），禁止写入会被 git 跟踪的文档/skill**。若密钥曾进过远端历史需轮换。
