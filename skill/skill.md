@@ -448,6 +448,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - ⚠️ A 记录指向公网出口 `115.197.187.231`（NAT 后），公网 80/443 不可达，内网设备可经 NAT 回流访问
   - 公网访问仍走 frp + 阿里云反代；域名无 nginx 站点时外部仍不可达
 - `/domains` WebUI：`renderRecords` 重构为按域名分组，A+AAAA 合并为一行显示（`buildStackRow`），各自记录保留独立编辑/删除
+- **双栈独立 DDNS 控制**（2026-08-15）：`ddnsMap` 改按 `record_name|record_type` 索引，A/AAAA 各自独立"加入DDNS/退出DDNS"（`enableDDNS(name,id,subdomain,type)` + `removeDDNS`）。场景：A 指向阿里云固定 IP 不需 DDNS，AAAA 动态更新需 DDNS。**注意**：`enableDDNS` 生成的配置 id 为 `子域名-类型小写`（如 maiapi1-aaaa）
 - **全量同步优化**（防 dnshe 429 限流）：快速检测(10s)已覆盖 IP 变化，全量同步(300s)增加跳过逻辑
   - `last_sync_map`（domain_id -> (ip, status)）记录上次同步结果
   - 非强制轮次：IP 未变且上次 ok → 跳过远端 API 调用（A 记录用缓存 IPv4 判断）
