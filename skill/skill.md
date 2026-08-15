@@ -84,6 +84,7 @@ config/env.toml
 - ⚠️ 废弃 frp 的 `maiapi2` https 隧道（frps 无 vhostHTTPSPort，必然失败）
 - 访问：`https://maiapi1.ptrel.cc.cd`、`https://maiapi2.ptrel.cc.cd`（IPv4 走阿里云；IPv6 好的设备走 AAAA 直连本机，双栈共存）
 - ✅ **公告已改为 cc.cd 地址**（2026-08-15）：new-api → `https://maiapi1.ptrel.cc.cd/v1/`、new-api2 → `https://maiapi2.ptrel.cc.cd/v1/`（数据库 options 表 Notice/ServerAddress/passkey.rp_id，因 newapi.ptrel.asia 未备案被拦）
+- ⚠️ **maiapi1 AAAA 记录已删**（2026-08-15）：用户 Mac 访问 maiapi1 ERR_CONNECTION_CLOSED（IPv6 直连路径问题），删 AAAA 强制走阿里云 IPv4（47.98.244.173）。ddns 配置 `maiapi1-aaaa` 已移除（防重新创建）。maiapi2 保留双栈（Mac 可访问）
 - 已删除 ddns WebUI 里 maiapi1/maiapi2 的 AAAA+A 双栈中错误指向：A→47.98.244.173 保留（走阿里云）
 
 **postsup.ptrel.asia（PostSup，2026-08-15 部署）**- PostSup = supervisor 管理平台（Go 单二进制，项目 `/main/app/github/postsup`）
@@ -456,6 +457,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (maiapi1 删 AAAA): 用户 Mac 访问 maiapi1.ptrel.cc.cd ERR_CONNECTION_CLOSED（IPv6 直连路径问题，请求未达服务器但 maiapi2 正常）。已删 dnshe AAAA 记录 + ddns `maiapi1-aaaa` 配置，强制走阿里云 IPv4。权威/8.8.8.8 确认无 AAAA。maiapi2 保留双栈。
 - 2026-08-15 (newapi 公告改 cc.cd): new-api → maiapi1.ptrel.cc.cd/v1/、new-api2 → maiapi2.ptrel.cc.cd/v1/（options 表 Notice/ServerAddress/passkey.rp_id）。原因：newapi.ptrel.asia 未备案被拦，改走已通的 cc.cd 地址。
 - 2026-08-15 (maiapi 走 cc.cd): maiapi1/maiapi2.ptrel.cc.cd 接入阿里云 HTTPS（复用 newapi3100/3102 frp TCP 隧道 + cc.cd 通配符证书）。原因：ptrel.asia 未备案被拦。废弃 frp `maiapi2` https 隧道（frps 无 vhostHTTPSPort）。IPv4 走阿里云、IPv6 走直连双栈共存。
 - 2026-08-15 (PostSup 部署): postsup.ptrel.asia 部署完成。⚠️ 坑：① 5013 被 supervisor-webui 占用→改 5014 ② supervisor_dir 改本机路径 ③ go build 需代理（GOPROXY=goproxy.cn）。frp 隧道 postsup5014(55014)。完整链路 https://postsup.ptrel.asia 验证通过。
