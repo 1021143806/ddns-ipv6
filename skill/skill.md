@@ -142,6 +142,102 @@ sudo bash deploy.sh
 - 修改 supervisor 配置后需 `supervisorctl update`
 - 旧版 `ddns.py` 保留兼容，新版守护进程为 `ddns_daemon.py`
 
+## 公网服务部署方法（完整流程，2026-08-15 实操验证）
+
+> 把本机服务暴露到公网并配域名访问的**标准流程**。适用两类域名：
+> - **ptrel.cc.cd**（dnshe 托管，动态 IP → DDNS 自动更新）
+> - **ptrel.asia**（阿里云云解析，固定 IP → 手动 A 记录）
+
+### 流程总览
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 步骤1 服务本机运行（supervisor / docker）                │
+│ 步骤2 内网可达（本机 127.0.0.1:PORT）                    │
+│ 步骤3 公网可达（frp 隧道 或 直接公网 IP）                │
+│ 步骤4 DNS 记录（A/AAAA 指向公网入口）                    │
+│ 步骤5 SSL 证书（*.ptrel.cc.cd 通配 / 单域名）            │
+│ 步骤6 阿里云 nginx 443 反代 → 公网端口                   │
+│ 步骤7 验证 https://域名                                │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 步骤详解
+
+**① 本机服务**
+- supervisor 部署：`/main/server/supervisor/conf.d/*.conf` + `supervisorctl update`
+- 确认监听：`ss -tlnp | grep PORT`
+
+**② frp 隧道（内网→公网）**
+- 修改 `/main/app/github/frp/frpc_a5.toml`：
+```toml
+[[proxies]]
+name = "mysvc-PORT"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = PORT
+remotePort = 58xxx          # 公网端口（5 位数）
+```
+- 重启：`supervisorctl restart frpc`（**严禁重启 frpc22 / kill**）
+- 验证：阿里云上 `timeout 5 bash -c 'echo > /dev/tcp/127.0.0.1/58xxx'`
+
+**③ 判断域名归属 → 加 DNS 记录**
+
+| 域名 | provider | 记录方式 | IP |
+|------|----------|---------|-----|
+| `*.ptrel.cc.cd` | dnshe | **DDNS 自动**（env.toml 加 [[domains]] + restart） | 本机动态 IP |
+| `*.ptrel.asia` | aliyun | **手动 A 记录**（勿加 DDNS！） | 阿里云固定 IP `47.98.244.173` |
+
+- dnshe：`config/env.toml` 加 `[[domains]]` → `supervisorctl restart ddns-ipv6`
+- 阿里云：WebUI「创建子域名」选阿里云 或 直接调 `app/aliyun_dns.py`
+- ⚠️ **阿里云域名的 A 记录指向 47.98.244.173（frps 服务器），绝不能被 DDNS 覆盖成本机 NAT IP**
+
+**④ SSL 证书**
+
+| 情况 | 方法 |
+|------|------|
+| `*.ptrel.cc.cd` | 已有通配符 `/etc/nginx/ssl/ptrel_fullchain.crt`（acme.sh 自动续期） |
+| 新 `.asia` 域名 | 阿里云服务器：`~/.acme.sh/acme.sh --issue --dns dns_ali -d 域名`（用阿里云 AccessKey DNS 验证）→ 拷贝到 `/etc/nginx/ssl/` |
+
+**⑤ 阿里云 nginx 反代**（`/etc/nginx/conf.d/xxx.conf`）
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name 域名;
+    ssl_certificate /etc/nginx/ssl/证书.crt;
+    ssl_certificate_key /etc/nginx/ssl/证书.key;
+    location / {
+        proxy_pass http://127.0.0.1:58xxx;   # frp 公网端口
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+server { listen 80; server_name 域名; return 301 https://$server_name$request_uri; }
+```
+- `nginx -t && nginx -s reload`
+
+**⑥ 验证**
+```bash
+dig @114.114.114.114 域名 A
+curl -sk -o /dev/null -w "%{http_code}\n" https://域名/
+```
+
+### 已应用实例
+- **ant.ptrel.asia**（Antigravity 2 API）：A 记录 47.98.244.173 + acme 证书 + nginx 443→58045→frp→本机8045
+- **ddns.ptrel.cc.cd**：DDNS AAAA + 通配符证书 + nginx 443→5080
+- **dsh.ptrel.cc.cd**：A 记录 47.98.244.173 + nginx 443→53080→frp→本机3080
+
+### 常见坑
+- frp 隧道端口必须 5 位数（如 58045），避免与公网常见端口冲突
+- 阿里云 nginx 反代目标 = **frp 公网端口**（127.0.0.1:58xxx），不是本机原始端口
+- HTTPS 服务如遇 WebSocket/SSE 需 `proxy_buffering off` + Upgrade 头
+- acme.sh 的 `--server letsencrypt` 与 ARI 续期窗口（自动，无需 cron 手动）
+
 ## 公网访问配置
 
 ### 方式一：Nginx HTTPS 反向代理（推荐）
