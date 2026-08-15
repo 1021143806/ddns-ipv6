@@ -455,7 +455,15 @@ async function loadApiChart() {
 // DDNS 监控域名列表（从服务端获取）
 const ddnsDomains = {{ domains | tojson }};
 let ddnsMap = {};
-ddnsDomains.forEach(d => { ddnsMap[d.record_name] = d; });
+
+// DDNS 状态按 (record_name + record_type) 独立管理，使双栈 A/AAAA 可分别控制
+function ddnsKey(name, type) { return `${name}|${type || ''}`; }
+function buildDdnsMap(list) {
+    const m = {};
+    (list || []).forEach(d => { m[ddnsKey(d.record_name, d.record_type)] = d; });
+    return m;
+}
+ddnsMap = buildDdnsMap(ddnsDomains);
 
 // Nginx 配置映射
 let nginxMap = {};
@@ -527,8 +535,8 @@ function renderRecords() {
                 va = parseInt(a.ttl) || 0;
                 vb = parseInt(b.ttl) || 0;
             } else if (key === 'ddns') {
-                va = ddnsMap[a.name] ? 1 : 0;
-                vb = ddnsMap[b.name] ? 1 : 0;
+                va = ddnsMap[ddnsKey(a.name, a.type)] ? 1 : 0;
+                vb = ddnsMap[ddnsKey(b.name, b.type)] ? 1 : 0;
             } else if (key === 'nginx') {
                 va = nginxMap[a.name] ? 1 : 0;
                 vb = nginxMap[b.name] ? 1 : 0;
@@ -571,7 +579,8 @@ function buildRecordRow(r) {
     const value = r.content || '-';
     const ttl = r.ttl || '-';
     const status = r.status || 'active';
-    const isDDNS = !!ddnsMap[name];
+    // DDNS 状态按 (record_name|record_type) 独立判断（双栈 A/AAAA 可分别控制）
+    const isDDNS = !!ddnsMap[ddnsKey(name, type)];
     const isAAAA = type === 'AAAA';
     const hasNginx = !!nginxMap[name];
 
@@ -601,7 +610,7 @@ function buildRecordRow(r) {
         <td><span class="status-dot" style="background:${status === 'active' ? '#34c759' : '#ff3b30'};" title="${status}"></span>${checkTimeHtml}</td>
         <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
         <td style="text-align:right;white-space:nowrap;">
-            ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
+            ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[ddnsKey(name, type)].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : (isAAAA ? `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}', 'AAAA')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;color:#34c759;">开启 DDNS</button>` : '')}
             <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
             <button onclick="showEditRecordModal('${recordId}', '${name}', '${type}', '${value.replace(/'/g, "\\'")}', ${ttl})" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">编辑</button>
             <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.82rem;font-weight:500;color:#ff3b30;">删除</button>
@@ -610,15 +619,14 @@ function buildRecordRow(r) {
     return tr;
 }
 
-// ===== 双栈合并行：同一域名 A + AAAA 合并为一行展示 =====
+// ===== 双栈合并行：同一域名 A + AAAA 合并为一行展示（各自独立控制 DDNS） =====
 function buildStackRow(name, group) {
     const aRec = group.find(r => r.type === 'A');
     const aaaaRec = group.find(r => r.type === 'AAAA');
-    const isDDNS = !!ddnsMap[name];
     const hasNginx = !!nginxMap[name];
     const subdomain = name.includes('.') ? name.split('.')[0] : name;
 
-    // 记录值 + 各自操作（两行，A 在上、AAAA 在下）
+    // 记录值 + 各自操作（两行，A 在上、AAAA 在下，每行独立 DDNS 状态/开关）
     const valueRows = [];
     [aRec, aaaaRec].forEach(r => {
         if (!r) return;
@@ -627,13 +635,27 @@ function buildStackRow(name, group) {
         const recordId = r.record_id || '';
         const typeColor = type === 'A' ? '#007aff' : '#34c759';
         const badge = `<span class="mac-badge" style="background:${typeColor}15;color:${typeColor};margin-right:0.4rem;">${type}</span>`;
+        // 该条记录独立的 DDNS 状态
+        const recDdns = ddnsMap[ddnsKey(name, type)];
+        const recIsDDNS = !!recDdns;
+        const ddnsDot = recIsDDNS
+            ? `<span class="status-dot" style="background:#007aff;display:inline-block;vertical-align:middle;" title="DDNS 监控中"></span>`
+            : `<span style="color:var(--text-secondary);font-size:0.7rem;margin-right:0.15rem;" title="未加入 DDNS">○</span>`;
+        // 独立操作：加入/退出 DDNS + 编辑/删除
+        let ddnsBtn = '';
+        if (recIsDDNS) {
+            ddnsBtn = `<button onclick="removeDDNS('${name}', '${type}')" class="mac-link" style="font-size:0.72rem;font-weight:500;margin-left:0.4rem;color:#ff9500;" title="退出 DDNS 自动更新">退出DDNS</button>`;
+        } else if (type === 'AAAA' || type === 'A') {
+            ddnsBtn = `<button onclick="enableDDNS('${name}', '${recordId}', '${subdomain}', '${type}')" class="mac-link" style="font-size:0.72rem;font-weight:500;margin-left:0.4rem;color:#34c759;">加入DDNS</button>`;
+        }
         const ops = `
+            ${ddnsBtn}
             <button onclick="showEditRecordModal('${recordId}', '${name}', '${type}', '${value.replace(/'/g, "\\'")}', ${r.ttl || 600})" class="mac-link" style="font-size:0.72rem;font-weight:500;margin-left:0.4rem;color:var(--text-secondary);">编辑</button>
             <button onclick="deleteRecord('${recordId}', '${name.replace(/'/g, "\\'")}')" class="mac-link" style="font-size:0.72rem;font-weight:500;margin-left:0.3rem;color:#ff3b30;">删除</button>
         `;
         valueRows.push(`<div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;min-width:0;">
             <span style="display:flex;align-items:center;min-width:0;">
-                ${badge}
+                ${badge}${ddnsDot}
                 <span style="font-family:'SF Mono',monospace;font-size:0.78rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${value}">${value}</span>
             </span>
             <span style="white-space:nowrap;">${ops}</span>
@@ -652,8 +674,8 @@ function buildStackRow(name, group) {
         : '<span class="mac-badge" style="background:rgba(128,128,128,0.12);color:var(--text-secondary);font-size:0.62rem;margin-left:0.3rem;padding:0.05rem 0.35rem;">dnshe</span>';
 
     tr.innerHTML = `
-        <td>${isDDNS ? '<span class="status-dot" style="background:#007aff;" title="DDNS 监控中"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
-        <td>${isDDNS ? `<a href="https://${name}${httpsPort !== 443 ? ':' + httpsPort : ''}" target="_blank" rel="noopener" style="font-weight:500;color:var(--apple-blue);text-decoration:none;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name} ↗</a>` : `<span style="font-weight:500;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>`}${providerBadge}</td>
+        <td><span style="color:var(--text-secondary);font-size:0.78rem;">双栈</span></td>
+        <td><span style="font-weight:500;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>${providerBadge}</td>
         <td style="vertical-align:middle;">
             <span class="mac-badge" style="background:rgba(0,122,255,0.12);color:#007aff;margin-right:0.3rem;">A</span>
             <span class="mac-badge" style="background:rgba(52,199,89,0.12);color:#34c759;">AAAA</span>
@@ -665,7 +687,6 @@ function buildStackRow(name, group) {
         <td>${statusDot}</td>
         <td>${hasNginx ? '<span class="status-dot" style="background:#34c759;" title="已配置 Nginx"></span>' : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>'}</td>
         <td style="text-align:right;white-space:nowrap;">
-            ${isDDNS ? `<button onclick="checkDomain('${ddnsMap[name].id}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">检查</button>` : ''}
             <button onclick="showNginxModal('${name}')" class="mac-link" style="font-size:0.82rem;font-weight:500;margin-right:0.5rem;">Nginx</button>
         </td>
     `;
@@ -725,9 +746,8 @@ async function loadRecords() {
             });
         });
 
-        // 构建 DDNS 映射
-        ddnsMap = {};
-        (ddnsData.domains || []).forEach(d => { ddnsMap[d.record_name] = d; });
+        // 构建 DDNS 映射（按 record_name|record_type 区分，支持双栈独立控制）
+        ddnsMap = buildDdnsMap(ddnsData.domains || []);
 
         allRecords = records;
         renderRecords();
@@ -914,18 +934,19 @@ async function checkDomain(domainId) {
     }
 }
 
-async function enableDDNS(name, recordId, subdomain) {
-    if (!confirm(`确定要为 "${name}" 开启 DDNS 自动更新吗？`)) return;
+async function enableDDNS(name, recordId, subdomain, recordType) {
+    const type = recordType || 'AAAA';
+    if (!confirm(`确定为 "${name}" 的 ${type} 记录开启 DDNS 自动更新吗？`)) return;
     const prov = name.endsWith('.asia') || name.endsWith('.aliyuncs.com') ? 'aliyun' : 'dnshe';
     try {
         const resp = await fetch('/api/domains', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                id: subdomain,
+                id: subdomain + '-' + type.toLowerCase(),
                 record_name: name,
                 subdomain_id: prov === 'aliyun' ? 0 : 404037,
-                record_type: 'AAAA',
+                record_type: type,
                 ttl: 600,
                 enabled: true,
                 provider: prov,
@@ -944,11 +965,33 @@ async function enableDDNS(name, recordId, subdomain) {
     }
 }
 
+// 退出某条记录（按类型）的 DDNS 监控
+async function removeDDNS(name, recordType) {
+    if (!confirm(`确定让 "${name}" 的 ${recordType} 记录退出 DDNS 自动更新吗？`)) return;
+    const rec = ddnsMap[ddnsKey(name, recordType)];
+    if (!rec) return;
+    const domainId = rec.id;
+    try {
+        const resp = await fetch(`/api/domains/${encodeURIComponent(domainId)}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (resp.ok) {
+            loadRecords();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            alert('❌ 退出失败: ' + (data.detail || '未知错误'));
+        }
+    } catch (e) {
+        alert('❌ 网络请求失败: ' + e.message);
+    }
+}
+
 // ===== 编辑 DNS 记录（模态框） =====
 let editRecordId = 0;
 function showEditRecordModal(recordId, name, type, content, ttl) {
     editRecordId = recordId;
-    const isDDNS = !!ddnsMap[name];
+    const isDDNS = !!ddnsMap[ddnsKey(name, type)];
     document.getElementById('modal-title').textContent = `编辑 ${name}`;
     document.getElementById('form-method').value = 'EDIT';
     document.getElementById('form-domain-id').value = recordId;
@@ -963,7 +1006,7 @@ function showEditRecordModal(recordId, name, type, content, ttl) {
     document.getElementById('form-provider').value = prov;
     onAddRecordProviderChange();
     document.getElementById('form-line').value = '';
-    document.getElementById('form-check-interval').value = isDDNS ? (ddnsMap[name].check_interval || '') : '';
+    document.getElementById('form-check-interval').value = isDDNS ? (ddnsMap[ddnsKey(name, type)].check_interval || '') : '';
     document.getElementById('form-enabled').checked = isDDNS;
     // 重置按钮状态
     const btn = document.querySelector('#domain-form button[type="submit"]');
@@ -1017,30 +1060,32 @@ document.getElementById('domain-form').addEventListener('submit', async (e) => {
             }
             console.log('[DEBUG] EDIT: 更新成功');
 
-            // 处理 DDNS 配置
-            console.log('[DEBUG] EDIT: 处理 DDNS 配置, enabled=' + enabled + ', isCurrentlyDDNS=' + !!ddnsMap[recordName]);
-            const isCurrentlyDDNS = !!ddnsMap[recordName];
+            // 处理 DDNS 配置（按 record_name|type 独立判断）
+            const curDDNS = ddnsMap[ddnsKey(recordName, recordType)];
+            const isCurrentlyDDNS = !!curDDNS;
+            console.log('[DEBUG] EDIT: 处理 DDNS 配置, enabled=' + enabled + ', isCurrentlyDDNS=' + isCurrentlyDDNS);
             if (enabled && !isCurrentlyDDNS) {
                 console.log('[DEBUG] EDIT: 添加 DDNS');
                 await fetch('/api/domains', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        id: subdomain, record_name: recordName, subdomain_id: editProvider === 'aliyun' ? 0 : 404037,
+                        id: subdomain + '-' + recordType.toLowerCase(), record_name: recordName,
+                        subdomain_id: editProvider === 'aliyun' ? 0 : 404037,
                         record_type: recordType, ttl: ttl, enabled: true, provider: editProvider,
                         check_interval: checkInterval ? parseInt(checkInterval) : undefined,
                     }),
                 });
             } else if (enabled && isCurrentlyDDNS) {
                 console.log('[DEBUG] EDIT: 更新 DDNS');
-                await fetch(`/api/domains/${subdomain}`, {
+                await fetch(`/api/domains/${encodeURIComponent(curDDNS.id)}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ttl: ttl, enabled: true, check_interval: checkInterval ? parseInt(checkInterval) : null }),
                 });
             } else if (!enabled && isCurrentlyDDNS) {
                 console.log('[DEBUG] EDIT: 删除 DDNS');
-                await fetch(`/api/domains/${subdomain}`, { method: 'DELETE' });
+                await fetch(`/api/domains/${encodeURIComponent(curDDNS.id)}`, { method: 'DELETE' });
             }
 
             console.log('[DEBUG] EDIT: 刷新缓存');
