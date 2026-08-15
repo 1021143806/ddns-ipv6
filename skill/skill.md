@@ -51,7 +51,7 @@ config/env.toml
 ### 阿里云托管域名（2026-08-15 实测）
 | 域名 | 已有记录 | 说明 |
 |------|---------|------|
-| `ptrel.asia` | `ipv6.AAAA → 240e:390:3c7:ef00::8a8`、`@.A → 47.98.244.173`、`ant.A → 47.98.244.173` | 云解析中唯一域名，NS 托管在阿里云 |
+| `ptrel.asia` | `ipv6.AAAA → 240e:390:3c7:ef00::8a8`、`@.A → 47.98.244.173`、`ant.A → 47.98.244.173`、`newapi.A / newapi2.A → 47.98.244.173` | 云解析中唯一域名，NS 托管在阿里云 |
 
 **ant.ptrel.asia（Antigravity 2 API，2026-08-15 配置）**
 - A 记录 → `47.98.244.173`（阿里云固定 IP，**手动维护，勿加 DDNS**——DDNS 会覆盖成本机 NAT IP）
@@ -59,6 +59,16 @@ config/env.toml
 - nginx：`/etc/nginx/conf.d/ant-ptrel-asia.conf`，443 反代 → `127.0.0.1:58045`（frp 隧道 → 本机 8045）
 - 访问：`https://ant.ptrel.asia`（HTTP 自动 301 跳 HTTPS）
 - frp：`ant2api8045` 隧道（本地 8045 → 公网 58045）
+
+**newapi.ptrel.asia（New API #1，2026-08-15 配置）**
+- A 记录 → 47.98.244.173（手动，勿加 DDNS）；证书 `/etc/nginx/ssl/newapi_ptrel_asia_fullchain.crt`
+- nginx `newapi-ptrel-asia.conf`：443 → `127.0.0.1:53100`（frp `newapi3100`：本地 3100 → 公网 53100）
+- 访问 `https://newapi.ptrel.asia`
+
+**newapi2.ptrel.asia（New API #2，2026-08-15 配置）**
+- A 记录 → 47.98.244.173（手动，勿加 DDNS）；证书 `/etc/nginx/ssl/newapi2_ptrel_asia_fullchain.crt`
+- nginx `newapi2-ptrel-asia.conf`：443 → `127.0.0.1:53102`（frp `newapi3102`：本地 3102 → 公网 53102）
+- 访问 `https://newapi2.ptrel.asia`
 
 > 注意：`ptrel.cc.cd` 的 NS 在 dnshe（免费域名，无法迁到阿里云），阿里云只能管理 `ptrel.asia` 等托管在阿里云云解析的域名。
 
@@ -411,6 +421,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (newapi 双实例): newapi.ptrel.asia + newapi2.ptrel.asia 走通阿里云 HTTPS 方案（A 记录 + acme DNS 证书 + nginx 443 反代 frp 端口）。容器/frp 隧道未动，仅新增域名访问层。访问 https://newapi.ptrel.asia / https://newapi2.ptrel.asia
 - 2026-08-15 (ant.ptrel.asia): Antigravity 2 API 域名访问配置完成。A 记录(手动,47.98.244.173) + acme.sh DNS 验证证书(自动续期至 2026-10-13) + 阿里云 nginx 443 反代 58045(frp→本机8045)。访问 https://ant.ptrel.asia。⚠️ 该 A 记录指向阿里云固定 IP，勿加 DDNS（会覆盖成本机 NAT IP）。
 - 2026-08-15 (安全事件): GitHub push protection 拦截——AccessKey 曾误写入 doc/aliyun.md 和 skill/skill.md（被 git 跟踪），已 `git reset --soft` 回退、清除密钥、重新提交推送。**教训：任何密钥只进 config/env.toml 与 skill/secret.md（gitignore），禁止写入会被 git 跟踪的文档/skill**。若密钥曾进过远端历史需轮换。
 - 2026-08-15: 同步全局 skill `/main/skill/ddns-ipv6.md`。修正 supervisor 部署路径为 `/main/server/supervisor/conf.d/`（经 /etc/supervisord.conf include 加载），废弃旧 WebUI 独立进程描述。记录当前 dnshe 400 创建 AAAA 失败问题（影响 ant2api 等新增域名），待跟进。
