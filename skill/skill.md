@@ -83,6 +83,7 @@ config/env.toml
 - nginx：`maiapi1-cc-cd.conf` / `maiapi2-cc-cd.conf`：443 → `127.0.0.1:53100/53102`（复用 newapi3100/3102 frp TCP 隧道）
 - ⚠️ 废弃 frp 的 `maiapi2` https 隧道（frps 无 vhostHTTPSPort，必然失败）
 - 访问：`https://maiapi1.ptrel.cc.cd`、`https://maiapi2.ptrel.cc.cd`（IPv4 走阿里云；IPv6 好的设备走 AAAA 直连本机，双栈共存）
+- ✅ **公告已改为 cc.cd 地址**（2026-08-15）：new-api → `https://maiapi1.ptrel.cc.cd/v1/`、new-api2 → `https://maiapi2.ptrel.cc.cd/v1/`（数据库 options 表 Notice/ServerAddress/passkey.rp_id，因 newapi.ptrel.asia 未备案被拦）
 - 已删除 ddns WebUI 里 maiapi1/maiapi2 的 AAAA+A 双栈中错误指向：A→47.98.244.173 保留（走阿里云）
 
 **postsup.ptrel.asia（PostSup，2026-08-15 部署）**- PostSup = supervisor 管理平台（Go 单二进制，项目 `/main/app/github/postsup`）
@@ -454,6 +455,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (newapi 公告改 cc.cd): new-api → maiapi1.ptrel.cc.cd/v1/、new-api2 → maiapi2.ptrel.cc.cd/v1/（options 表 Notice/ServerAddress/passkey.rp_id）。原因：newapi.ptrel.asia 未备案被拦，改走已通的 cc.cd 地址。
 - 2026-08-15 (maiapi 走 cc.cd): maiapi1/maiapi2.ptrel.cc.cd 接入阿里云 HTTPS（复用 newapi3100/3102 frp TCP 隧道 + cc.cd 通配符证书）。原因：ptrel.asia 未备案被拦。废弃 frp `maiapi2` https 隧道（frps 无 vhostHTTPSPort）。IPv4 走阿里云、IPv6 走直连双栈共存。
 - 2026-08-15 (PostSup 部署): postsup.ptrel.asia 部署完成。⚠️ 坑：① 5013 被 supervisor-webui 占用→改 5014 ② supervisor_dir 改本机路径 ③ go build 需代理（GOPROXY=goproxy.cn）。frp 隧道 postsup5014(55014)。完整链路 https://postsup.ptrel.asia 验证通过。
 - 2026-08-15 (HTTP/2禁用): 阿里云 nginx **全局禁用 HTTP/2**（6 个 conf 共 10 处 `listen 443/8443 ssl http2` → `listen ... ssl`），因 Rikka Hub(okhttp) 与 HTTP/2+反代连接复用有偶发 `Connection reset` 兼容问题。HTTP/1.1 高频 20/20 稳定。备份在 `/etc/nginx/backup/20260815_http2/`。ALPN 不再协商 h2。⚠️ 后续新增反代配置**不要带 http2**。
