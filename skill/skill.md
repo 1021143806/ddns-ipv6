@@ -437,6 +437,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (HTTP/2禁用): 阿里云 nginx **全局禁用 HTTP/2**（6 个 conf 共 10 处 `listen 443/8443 ssl http2` → `listen ... ssl`），因 Rikka Hub(okhttp) 与 HTTP/2+反代连接复用有偶发 `Connection reset` 兼容问题。HTTP/1.1 高频 20/20 稳定。备份在 `/etc/nginx/backup/20260815_http2/`。ALPN 不再协商 h2。⚠️ 后续新增反代配置**不要带 http2**。
 - 2026-08-15 (napcat30 恢复): napcat30 容器 8/14 被 SIGKILL(137) 后未自动拉起（restart=unless-stopped 失效），`docker start` 恢复。napcat27/25 按需移除（`docker stop && rm`）。清理失效 nginx 配置 `napcat_na`/`napcat_hilda`（下划线旧域名，dnshe 已改连字符，无 DNS 记录）→ 备份至 `/etc/nginx/conf.d/old_20260815/`。⚠️ **WebUI 访问坑**：napcat WebUI 是 HTTP 服务，frp 隧道(56128→6128)是 TCP 纯隧道，**必须用 `http://47.98.244.173:56128/webui/` 访问**，用 https 会握手失败(Connection reset)。本机 nginx 443/4443 已有大量 `conflicting server name`/`protocol options redefined` 警告（mcphub.conf 与 mcphub.ptrel.cc.cd.conf 等重复），待清理。
 - 2026-08-15 (gitea): git.ptrel.asia 阿里云 HTTPS 完成。⚠️ 坑：gitea 自身 PROTOCOL=https，nginx 反代必须 `proxy_pass https://` + `proxy_ssl_verify off`，用 http 会 400。gitea DOMAIN/ROOT_URL/SSH_DOMAIN 已切到新域名。
 - 2026-08-15 (ant2api 修复): Cloud Code API 区域限制问题修复。mihomo 新增 ant2api-SG 分组强制走新加坡节点 + googleapis.com 域名规则。✅ 域名调用恢复。
