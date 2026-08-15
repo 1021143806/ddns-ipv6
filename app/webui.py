@@ -7,6 +7,7 @@ from app.core import load_config
 from app.routes.pages import router as pages_router
 from app.routes.api_domains import router as api_domains_router
 from app.routes.api_logs import router as api_logs_router
+from app.routes.api_help import router as api_help_router
 import os
 
 # 项目根目录
@@ -33,6 +34,7 @@ app.state.config = config
 app.include_router(pages_router)
 app.include_router(api_domains_router)
 app.include_router(api_logs_router)
+app.include_router(api_help_router)
 
 
 @app.on_event("startup")

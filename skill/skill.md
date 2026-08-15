@@ -39,6 +39,7 @@ config/env.toml
 | `app/core.py` | `check_and_update_domain` 按 `provider` 分发：`_check_and_update_domain_dnshe`（原逻辑）/ `_check_and_update_domain_aliyun`（新增） |
 | `config/env.toml` | `[aliyun]` 段 + 各域名 `provider` 字段 |
 | WebUI | 域名列表按 provider 显示徽章（dnshe 灰 / 阿里云 橙），dns-records 接口合并两provider记录并打标签；创建子域名/添加记录模态框带 provider 下拉（dnshe 注册子域名 / 阿里云直接建 AAAA 记录） |
+| `GET /api/help` | 无需登录返回使用说明+接口文档+AI 决策规则（供外部工具/AI 发现服务能力） |
 
 ### 阿里云凭据（RAM 子账号 power-user-access）
 - ⚠️ **AccessKey 只存于本地 `config/env.toml` 的 `[aliyun]` 段**（该文件已 gitignore，不会进版本库）
@@ -306,6 +307,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (安全事件): GitHub push protection 拦截——AccessKey 曾误写入 doc/aliyun.md 和 skill/skill.md（被 git 跟踪），已 `git reset --soft` 回退、清除密钥、重新提交推送。**教训：任何密钥只进 config/env.toml（gitignore），禁止写入会被 git 跟踪的文档/skill**。若密钥曾进过远端历史需轮换。
 - 2026-08-15: 同步全局 skill `/main/skill/ddns-ipv6.md`。修正 supervisor 部署路径为 `/main/server/supervisor/conf.d/`（经 /etc/supervisord.conf include 加载），废弃旧 WebUI 独立进程描述。记录当前 dnshe 400 创建 AAAA 失败问题（影响 ant2api 等新增域名），待跟进。
 - 2026-08-15 (下午): 修复 400 根因（napcat 下划线→连字符）；全域名双栈（A+AAAA）；/domains 页面合并双栈行；开始新增阿里云 provider（app/aliyun_dns.py 已建、core.py 已分发，`_check_and_update_domain_aliyun` 待实现）。阿里云 AccessKey 与 ptrel.asia 域名信息见上文"阿里云云解析支持"章节。
 - 2026-05-23: v2.0 重构完成，新增 FastAPI WebUI，支持多域名管理、用户认证、操作日志。

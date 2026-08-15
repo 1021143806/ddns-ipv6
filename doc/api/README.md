@@ -5,6 +5,7 @@
 - **Base URL**: `http://<服务器IP>:5080` 或 `https://ddns.ptrel.cc.cd`
 - **认证方式**: Session Cookie（先登录获取）
 - **内容类型**: `application/json`
+- **服务发现**: `GET /api/help` 无需登录，返回完整接口文档 + AI 决策规则（AI 优先调用此接口了解服务能力）
 
 ---
 
@@ -60,13 +61,30 @@ curl -b /tmp/cookies.txt http://localhost:5080/api/domains
 
 ### 2.2 添加域名
 
+支持两种 provider（后端）：`dnshe`（默认）与 `aliyun`（阿里云云解析）。
+
 ```bash
+# dnshe 域名
 curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains \
   -H "Content-Type: application/json" \
   -d '{
     "id": "ddns",
     "record_name": "ddns.ptrel.cc.cd",
+    "provider": "dnshe",
     "subdomain_id": 404037,
+    "record_type": "AAAA",
+    "ttl": 600,
+    "enabled": true
+  }'
+
+# 阿里云域名（无需 subdomain_id，填 0 即可）
+curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "asia-ipv6",
+    "record_name": "ipv6.ptrel.asia",
+    "provider": "aliyun",
+    "subdomain_id": 0,
     "record_type": "AAAA",
     "ttl": 600,
     "enabled": true
@@ -78,8 +96,9 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains \
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `id` | string | 否 | 唯一标识，默认取子域名前缀 |
-| `record_name` | string | 是 | 完整域名，如 `ddns.ptrel.cc.cd` |
-| `subdomain_id` | int | 是 | dnshe 子域名 ID |
+| `record_name` | string | 是 | 完整域名，如 `ddns.ptrel.cc.cd` 或 `ipv6.ptrel.asia` |
+| `provider` | string | 否 | `dnshe`（默认）或 `aliyun` |
+| `subdomain_id` | int | dnshe必填 | dnshe 子域名 ID；阿里云填 `0` |
 | `record_type` | string | 否 | 默认 `AAAA` |
 | `ttl` | int | 否 | 默认 `600` |
 | `enabled` | bool | 否 | 默认 `true` |
@@ -102,25 +121,40 @@ curl -b /tmp/cookies.txt -X PUT http://localhost:5080/api/domains/ipv6 \
 curl -b /tmp/cookies.txt -X DELETE http://localhost:5080/api/domains/ipv6
 ```
 
-### 2.5 注册子域名
+### 2.5 创建子域名
 
-通过 dnshe API 直接创建子域名，无需登录 dnshe 面板。
+支持两种 provider：dnshe 走"注册子域名"，阿里云走"直接添加 AAAA 记录"（托管制无需注册）。
 
+**dnshe 方式（注册新子域名）**:
 ```bash
 curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/register-subdomain \
   -H "Content-Type: application/json" \
   -d '{
+    "provider": "dnshe",
     "subdomain": "ddns",
     "rootdomain": "ptrel.cc.cd"
   }'
 ```
 
+**阿里云方式（直接创建 AAAA 记录）**:
+```bash
+curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/register-subdomain \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "aliyun",
+    "subdomain": "test",
+    "rootdomain": "ptrel.asia"
+  }'
+```
+阿里云方式会自动用本机 IPv6 作为记录值，创建 `test.ptrel.asia` 的 AAAA 记录。
+
 **参数说明**:
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `subdomain` | string | 是 | 子域名前缀，如 `ddns` |
-| `rootdomain` | string | 是 | 根域名，如 `ptrel.cc.cd` |
+| `provider` | string | 否 | `dnshe`（默认）或 `aliyun` |
+| `subdomain` | string | 是 | 子域名前缀，如 `ddns` 或 `test` |
+| `rootdomain` | string | 是 | 根域名，如 `ptrel.cc.cd` 或 `ptrel.asia` |
 
 **响应示例**:
 ```json
@@ -135,13 +169,86 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/register-subd
 }
 ```
 
-> 返回的 `id` 或 `subdomain_id` 即为后续添加域名时所需的 `subdomain_id`。
+> dnshe 方式返回的 `id` / `subdomain_id` 即为后续添加域名时所需的 `subdomain_id`。
 
 ---
 
-## 3. 检测更新
+## 3. DNS 记录 CRUD（支持双 provider）
 
-### 3.1 手动触发单域名检测
+### 3.1 获取全部 DNS 记录（合并 dnshe + 阿里云）
+
+```bash
+curl -b /tmp/cookies.txt http://localhost:5080/api/domains/dns-records
+```
+
+**响应**: 每条记录带 `provider` 字段（`dnshe` / `aliyun`），阿里云记录实时从 OpenAPI 拉取。
+```json
+{
+    "records": [
+        {"name": "ipv6.ptrel.cc.cd", "type": "AAAA", "content": "240e:...::8a8", "provider": "dnshe", "ttl": 600},
+        {"name": "ipv6.ptrel.asia", "type": "AAAA", "content": "240e:...::8a8", "provider": "aliyun", "ttl": 600}
+    ],
+    "total": 2
+}
+```
+
+### 3.2 创建 DNS 记录
+
+```bash
+# dnshe（name 传子域名前缀）
+curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/dns-record/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "dnshe",
+    "subdomain_id": 404037,
+    "type": "AAAA",
+    "name": "test",
+    "content": "240e:390:3c7:ef00::8a8",
+    "ttl": 600
+  }'
+
+# 阿里云（name 传完整域名，自动拆分 RR 与主域）
+curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/dns-record/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "aliyun",
+    "type": "AAAA",
+    "name": "test.ptrel.asia",
+    "content": "240e:390:3c7:ef00::8a8",
+    "ttl": 600
+  }'
+```
+
+**参数说明**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `provider` | string | 否 | `dnshe`（默认）或 `aliyun` |
+| `subdomain_id` | int | dnshe必填 | dnshe 子域名 ID |
+| `type` | string | 是 | `AAAA` / `A` / `TXT` / `CNAME` |
+| `name` | string | 是 | dnshe：子域名前缀；阿里云：完整域名 |
+| `content` | string | 是 | 记录值 |
+| `ttl` | int | 否 | 默认 `600` |
+
+### 3.3 更新 DNS 记录
+
+```bash
+curl -b /tmp/cookies.txt -X PUT http://localhost:5080/api/domains/dns-record/{record_id} \
+  -H "Content-Type: application/json" \
+  -d '{"type": "AAAA", "name": "test", "content": "240e:...::9999", "ttl": 600, "provider": "dnshe"}'
+```
+
+### 3.4 删除 DNS 记录
+
+```bash
+curl -b /tmp/cookies.txt -X DELETE http://localhost:5080/api/domains/dns-record/{record_id}
+```
+
+---
+
+## 4. 检测更新
+
+### 4.1 手动触发单域名检测
 
 ```bash
 curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/ipv6/check
@@ -171,7 +278,7 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/ipv6/check
 | `skip` | 地址未变化，跳过 |
 | `error` | 检测失败 |
 
-### 3.2 手动触发全部域名检测
+### 4.2 手动触发全部域名检测
 
 ```bash
 curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/check-all
@@ -179,9 +286,9 @@ curl -b /tmp/cookies.txt -X POST http://localhost:5080/api/domains/check-all
 
 ---
 
-## 4. 日志查询
+## 5. 日志查询
 
-### 4.1 查询操作日志
+### 5.1 查询操作日志
 
 ```bash
 # 查询最近 50 条
@@ -222,9 +329,9 @@ curl -b /tmp/cookies.txt "http://localhost:5080/api/logs?domain_id=ipv6&limit=20
 
 ---
 
-## 5. 状态查询
+## 6. 状态查询
 
-### 5.1 获取服务状态概览
+### 6.1 获取服务状态概览
 
 ```bash
 curl -b /tmp/cookies.txt http://localhost:5080/api/status
@@ -244,7 +351,7 @@ curl -b /tmp/cookies.txt http://localhost:5080/api/status
 
 ---
 
-## 6. 错误处理
+## 7. 错误处理
 
 所有 API 在出错时返回标准 HTTP 状态码和错误信息：
 
@@ -310,6 +417,8 @@ curl -b /tmp/cookies.txt "http://localhost:5080/api/logs/daemon?lines=200&tail=t
 
 ## 9. 完整使用示例
 
+### 9.1 dnshe 域名全流程
+
 ```bash
 #!/bin/bash
 # 1. 登录
@@ -341,4 +450,37 @@ curl -b /tmp/ddns.txt -X POST http://localhost:5080/api/domains/myapp/check
 
 # 6. 查看日志
 curl -b /tmp/ddns.txt "http://localhost:5080/api/logs?domain_id=myapp&limit=10"
+```
+
+### 9.2 阿里云域名全流程
+
+```bash
+#!/bin/bash
+# 1. 登录
+curl -c /tmp/ddns.txt -X POST http://localhost:5080/login \
+  -d "username=admin&password=admin123"
+
+# 2. 创建阿里云子域名（= 添加 AAAA 记录到 ptrel.asia）
+curl -b /tmp/ddns.txt -X POST http://localhost:5080/api/domains/register-subdomain \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "aliyun", "subdomain": "myapp", "rootdomain": "ptrel.asia"}'
+
+# 3. 添加域名到 DDNS 监控（provider=aliyun，subdomain_id 填 0）
+curl -b /tmp/ddns.txt -X POST http://localhost:5080/api/domains \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "myapp",
+    "record_name": "myapp.ptrel.asia",
+    "provider": "aliyun",
+    "subdomain_id": 0,
+    "record_type": "AAAA",
+    "ttl": 600,
+    "enabled": true
+  }'
+
+# 4. 手动触发检测
+curl -b /tmp/ddns.txt -X POST http://localhost:5080/api/domains/myapp/check
+
+# 5. 查看 DNS 记录（含阿里云记录）
+curl -b /tmp/ddns.txt http://localhost:5080/api/domains/dns-records
 ```
