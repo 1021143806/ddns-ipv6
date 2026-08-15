@@ -51,7 +51,14 @@ config/env.toml
 ### 阿里云托管域名（2026-08-15 实测）
 | 域名 | 已有记录 | 说明 |
 |------|---------|------|
-| `ptrel.asia` | `ipv6.AAAA → 240e:390:3c7:ef00::8a8`、`@.A → 47.98.244.173` | 云解析中唯一域名，NS 托管在阿里云 |
+| `ptrel.asia` | `ipv6.AAAA → 240e:390:3c7:ef00::8a8`、`@.A → 47.98.244.173`、`ant.A → 47.98.244.173` | 云解析中唯一域名，NS 托管在阿里云 |
+
+**ant.ptrel.asia（Antigravity 2 API，2026-08-15 配置）**
+- A 记录 → `47.98.244.173`（阿里云固定 IP，**手动维护，勿加 DDNS**——DDNS 会覆盖成本机 NAT IP）
+- 证书：Let's Encrypt ECC，`/etc/nginx/ssl/ant_ptrel_asia_fullchain.crt`（acme.sh DNS 验证，2026-10-13 自动续期，到 2026-11-13）
+- nginx：`/etc/nginx/conf.d/ant-ptrel-asia.conf`，443 反代 → `127.0.0.1:58045`（frp 隧道 → 本机 8045）
+- 访问：`https://ant.ptrel.asia`（HTTP 自动 301 跳 HTTPS）
+- frp：`ant2api8045` 隧道（本地 8045 → 公网 58045）
 
 > 注意：`ptrel.cc.cd` 的 NS 在 dnshe（免费域名，无法迁到阿里云），阿里云只能管理 `ptrel.asia` 等托管在阿里云云解析的域名。
 
@@ -308,7 +315,8 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
-- 2026-08-15 (安全事件): GitHub push protection 拦截——AccessKey 曾误写入 doc/aliyun.md 和 skill/skill.md（被 git 跟踪），已 `git reset --soft` 回退、清除密钥、重新提交推送。**教训：任何密钥只进 config/env.toml（gitignore），禁止写入会被 git 跟踪的文档/skill**。若密钥曾进过远端历史需轮换。
+- 2026-08-15 (ant.ptrel.asia): Antigravity 2 API 域名访问配置完成。A 记录(手动,47.98.244.173) + acme.sh DNS 验证证书(自动续期至 2026-10-13) + 阿里云 nginx 443 反代 58045(frp→本机8045)。访问 https://ant.ptrel.asia。⚠️ 该 A 记录指向阿里云固定 IP，勿加 DDNS（会覆盖成本机 NAT IP）。
+- 2026-08-15 (安全事件): GitHub push protection 拦截——AccessKey 曾误写入 doc/aliyun.md 和 skill/skill.md（被 git 跟踪），已 `git reset --soft` 回退、清除密钥、重新提交推送。**教训：任何密钥只进 config/env.toml 与 skill/secret.md（gitignore），禁止写入会被 git 跟踪的文档/skill**。若密钥曾进过远端历史需轮换。
 - 2026-08-15: 同步全局 skill `/main/skill/ddns-ipv6.md`。修正 supervisor 部署路径为 `/main/server/supervisor/conf.d/`（经 /etc/supervisord.conf include 加载），废弃旧 WebUI 独立进程描述。记录当前 dnshe 400 创建 AAAA 失败问题（影响 ant2api 等新增域名），待跟进。
 - 2026-08-15 (下午): 修复 400 根因（napcat 下划线→连字符）；全域名双栈（A+AAAA）；/domains 页面合并双栈行；开始新增阿里云 provider（app/aliyun_dns.py 已建、core.py 已分发，`_check_and_update_domain_aliyun` 待实现）。阿里云 AccessKey 与 ptrel.asia 域名信息见上文"阿里云云解析支持"章节。
 - 2026-05-23: v2.0 重构完成，新增 FastAPI WebUI，支持多域名管理、用户认证、操作日志。
