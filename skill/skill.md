@@ -70,6 +70,14 @@ config/env.toml
 - nginx `newapi2-ptrel-asia.conf`：443 → `127.0.0.1:53102`（frp `newapi3102`：本地 3102 → 公网 53102）
 - 访问 `https://newapi2.ptrel.asia`
 
+**git.ptrel.asia（Gitea，2026-08-15 配置）**
+- A 记录 → 47.98.244.173（手动，勿加 DDNS）；证书 `/etc/nginx/ssl/git_ptrel_asia_fullchain.crt`
+- nginx `git-ptrel-asia.conf`：443 → `https://127.0.0.1:53103`（**注意反代用 https，gitea 自身 PROTOCOL=https**）+ `proxy_ssl_verify off`
+- gitea 配置 `/main/app/gitea/config/app.ini`：DOMAIN/ROOT_URL/SSH_DOMAIN 已改为 `git.ptrel.asia`
+- frp：`gitea3103`（本地 3103 → 公网 53103）、`giteaSSH2222`（本地 2222 → 公网 52222）
+- 访问：`https://git.ptrel.asia`（Web）、SSH 克隆 `git@git.ptrel.asia:52222:a1/repo.git`（或 :2222 内网）
+- ⚠️ gitea 是 HTTPS 服务，nginx 反代必须 `proxy_pass https://` + `proxy_ssl_verify off`；若用 http 反代会 400
+
 > 注意：`ptrel.cc.cd` 的 NS 在 dnshe（免费域名，无法迁到阿里云），阿里云只能管理 `ptrel.asia` 等托管在阿里云云解析的域名。
 
 ### 接入步骤（供后续实施）
@@ -429,6 +437,7 @@ grep "2026-05-24" /main/log/app/ddns-ipv6.log
   - 双栈后 32 域名每轮全量必触发 dnshe 60次/分钟限流，优化后非强制轮几乎零 API 调用
 
 ## ds 说
+- 2026-08-15 (gitea): git.ptrel.asia 阿里云 HTTPS 完成。⚠️ 坑：gitea 自身 PROTOCOL=https，nginx 反代必须 `proxy_pass https://` + `proxy_ssl_verify off`，用 http 会 400。gitea DOMAIN/ROOT_URL/SSH_DOMAIN 已切到新域名。
 - 2026-08-15 (ant2api 修复): Cloud Code API 区域限制问题修复。mihomo 新增 ant2api-SG 分组强制走新加坡节点 + googleapis.com 域名规则。✅ 域名调用恢复。
 - 2026-08-15 (newapi 双实例): newapi.ptrel.asia + newapi2.ptrel.asia 走通阿里云 HTTPS 方案（A 记录 + acme DNS 证书 + nginx 443 反代 frp 端口）。容器/frp 隧道未动，仅新增域名访问层。访问 https://newapi.ptrel.asia / https://newapi2.ptrel.asia
 - 2026-08-15 (ant.ptrel.asia): Antigravity 2 API 域名访问配置完成。A 记录(手动,47.98.244.173) + acme.sh DNS 验证证书(自动续期至 2026-10-13) + 阿里云 nginx 443 反代 58045(frp→本机8045)。访问 https://ant.ptrel.asia。⚠️ 该 A 记录指向阿里云固定 IP，勿加 DDNS（会覆盖成本机 NAT IP）。
