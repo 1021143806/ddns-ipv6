@@ -22,6 +22,9 @@ test/__pycache__/
 # Plans
 plans/
 
+# Local sensitive skill (凭据等敏感信息，禁止提交)
+skill/secret.md
+
 # IDE
 .vscode/
 .idea/

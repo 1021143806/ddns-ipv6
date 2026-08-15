@@ -1,6 +1,7 @@
 # DDNS IPv6 项目 Skill
 
 > 本项目同时有全局 skill：`/main/skill/ddns-ipv6.md`（服务器运维视角，含当前域名清单、SSL 证书、已知问题）。本项目文件侧重开发与配置细节。
+> 🔒 **敏感凭据（阿里云 AccessKey、密码）见本地 `skill/secret.md`**（该文件已 gitignore，不提交）。本文档及任何被 git 跟踪的文件**严禁**出现凭据明文。
 
 ## 项目概述
 DDNS IPv6 动态域名解析服务，通过 dnshe.com API 自动更新 AAAA 记录。
@@ -42,10 +43,10 @@ config/env.toml
 | `GET /api/help` | 无需登录返回使用说明+接口文档+AI 决策规则（供外部工具/AI 发现服务能力） |
 
 ### 阿里云凭据（RAM 子账号 power-user-access）
-- ⚠️ **AccessKey 只存于本地 `config/env.toml` 的 `[aliyun]` 段**（该文件已 gitignore，不会进版本库）
+- 🔒 **AccessKey 明文见本地 `skill/secret.md`**（已 gitignore）与 `config/env.toml` 的 `[aliyun]` 段
 - 已授权：云解析 DNS 记录管理（DescribeDomainRecords/AddDomainRecord/UpdateDomainRecord/DeleteDomainRecord）
 - ⚠️ **严禁**把 AccessKey 写入 skill/README/doc 等被 git 跟踪的文件，否则 GitHub push protection 拦截；泄露需到阿里云 RAM 轮换密钥
-- 若本地 config/env.toml 缺失该段，需向用户索取后补写（RAM 控制台 → 用户 power-user-access → 创建 AccessKey）
+- 若本地 config/env.toml 缺失该段，从 `skill/secret.md` 补写
 
 ### 阿里云托管域名（2026-08-15 实测）
 | 域名 | 已有记录 | 说明 |
