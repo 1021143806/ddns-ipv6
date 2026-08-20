@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- 背景渐变：深邃公网蓝黑 -->
+    <linearGradient id="bgDdnsA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a1526" />
+      <stop offset="100%" stop-color="#040913" />
+    </linearGradient>
+    <!-- 环球光轨渐变：冰川蓝到极光青 -->
+    <linearGradient id="orbitGradA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#58a6ff" />
+      <stop offset="60%" stop-color="#388bfd" />
+      <stop offset="100%" stop-color="#39d353" />
+    </linearGradient>
+    <!-- 数字 6 晶体渐变 -->
+    <linearGradient id="textGradA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="60%" stop-color="#79c0ff" />
+      <stop offset="100%" stop-color="#388bfd" />
+    </linearGradient>
+    <filter id="glowDdnsA" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Apple 风格圆角底板 -->
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bgDdnsA)" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+
+  <!-- 经纬度地球网格线 (透明低对比度) -->
+  <circle cx="64" cy="64" r="38" fill="none" stroke="rgba(88,166,255,0.18)" stroke-width="1.5" />
+  <ellipse cx="64" cy="64" rx="38" ry="16" fill="none" stroke="rgba(88,166,255,0.18)" stroke-width="1.2" />
+  <ellipse cx="64" cy="64" rx="16" ry="38" fill="none" stroke="rgba(88,166,255,0.18)" stroke-width="1.2" />
+
+  <!-- 倾斜 25 度的 IPv6 动态环绕光轨 -->
+  <ellipse cx="64" cy="64" rx="46" ry="20" fill="none" stroke="url(#orbitGradA)" stroke-width="3" 
+           transform="rotate(-25 64 64)" stroke-dasharray="70 12 18 12" filter="url(#glowDdnsA)" />
+  
+  <!-- 光轨上的公网卫星数据节点 -->
+  <circle cx="98" cy="46" r="3.5" fill="#56d364" filter="url(#glowDdnsA)" />
+  <circle cx="30" cy="82" r="3" fill="#79c0ff" filter="url(#glowDdnsA)" />
+
+  <!-- 中心立体 "6" 完美垂直居中 -->
+  <text x="64" y="78" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif" 
+        font-size="42" font-weight="900" text-anchor="middle" fill="url(#textGradA)" filter="url(#glowDdnsA)">6</text>
+</svg>
